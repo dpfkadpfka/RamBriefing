@@ -270,7 +270,7 @@ $h = MainFocus; if (-not $h) { $result.errors += @{ room = ""; msg = "카카오�
 [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 400   # 남아 있는 검색칸 닫기
 $h = MainFocus; if (-not $h) { $result.errors += @{ room = ""; msg = "카카오톡 목록 창을 앞으로 가져오지 못했어요" }; Done }
 ClickIn $h 38 118 | Out-Null; Start-Sleep -Milliseconds 400
-$lh = [WH]::List($h); if ($lh -eq [IntPtr]::Zero) { $result.errors += @{ room = ""; msg = "채팅 목록을 찾지 못했어요" }; Done }
+$lh = [WH]::List($h); if ($lh -eq [IntPtr]::Zero) { $result.errors += @{ room = ""; msg = "카톡 로그인이 필요해요 (채팅 목록을 찾지 못했어요)" }; Done }
 $q = New-Object W32+RECT; [W32]::GetWindowRect($lh, [ref]$q) | Out-Null
 $cx = [int](($q.L + $q.R) / 2); $cy = [int](($q.T + $q.B) / 2)
 $seen = @{}; $idx = 0; $t00 = Get-Date

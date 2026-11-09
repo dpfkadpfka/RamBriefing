@@ -6,6 +6,13 @@ contextBridge.exposeInMainWorld("rb", {
   logout: () => ipcRenderer.invoke("logout"),
   addEvent: a => ipcRenderer.invoke("addEvent", a),
   chat: p => ipcRenderer.invoke("chat", p),
+  getSetup: () => ipcRenderer.invoke("getSetup"),
+  saveSetup: s => ipcRenderer.invoke("saveSetup", s),
+  checkEnv: () => ipcRenderer.invoke("checkEnv"),
+  retry: () => ipcRenderer.invoke("retry"),
+  setGemini: k => ipcRenderer.invoke("setGemini", k),
+  getBriefings: () => ipcRenderer.invoke("getBriefings"),
+  syncDoc: p => ipcRenderer.invoke("syncDoc", p),
   getIcon: () => ipcRenderer.invoke("getIcon"),
   setIcon: n => ipcRenderer.invoke("setIcon", n),
 });

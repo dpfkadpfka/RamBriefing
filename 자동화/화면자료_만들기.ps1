@@ -1,9 +1,10 @@
 ﻿# 아침 자동화 결과를 RamBriefing 화면용 자료로 바꾼다. AI를 쓰지 않는다. 최근 14일치만 보관한다.
 $ErrorActionPreference = "Stop"
 $here = $PSScriptRoot
-$src = Join-Path $here "오늘자료"
-$app = Join-Path (Split-Path $here) "앱"
-$dataDir = Join-Path $app "data"
+. (Join-Path $here "공통.ps1")
+$src = $RB.work
+# 화면 자료는 $RB.data 에 쓴다
+$dataDir = $RB.data
 New-Item -ItemType Directory -Force $dataDir | Out-Null
 $today = Get-Date -Format "yyyy-MM-dd"
 
@@ -11,7 +12,7 @@ function Read-Text($p) { if (Test-Path -LiteralPath $p) { return [IO.File]::Read
 
 # ----- 일정 정리 결과: 오늘 결과 중 가장 최근 것 -----
 $summary = New-Object System.Collections.ArrayList
-$res = Get-ChildItem -LiteralPath (Join-Path $here "결과") -Filter "$today*.md" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+$res = Get-ChildItem -LiteralPath $RB.out -Filter "$today*.md" -File -ErrorAction SilentlyContinue | Sort-Object LastWriteTime -Descending | Select-Object -First 1
 if ($res) {
   $cur = $null; $front = 0
   foreach ($line in (Read-Text $res.FullName)) {

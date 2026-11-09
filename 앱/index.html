@@ -25,7 +25,7 @@
     <div id="topics"></div>
     <div class="nav-h">보관</div>
     <div id="menu2"></div>
-    <div class="nav-foot"><button class="nav-it" id="openSettings"><span class="ic" id="gear"></span><span class="n">설정</span></button></div>
+    <div class="nav-foot"><div class="pc-role" id="pcRole" hidden></div><button class="nav-it" id="openSettings"><span class="ic" id="gear"></span><span class="n">설정</span></button></div>
   </nav>
   <div class="work">
     <header class="head">
@@ -48,6 +48,7 @@
       <div class="strip">
         <span class="lead">오늘 브리핑</span>
         <div class="stats" id="stats"></div>
+        <button class="ghost" id="noteRetry" hidden>다시 시도</button>
         <button class="ghost" id="more" aria-expanded="false">자세히</button>
         <button class="icon" id="noteX" aria-label="공지 닫기" title="닫기"></button>
       </div>
@@ -62,6 +63,7 @@
     <div class="m-side">
       <h2>설정</h2>
       <button data-tab="general">일반</button>
+      <button data-tab="pc">컴퓨터</button>
       <button data-tab="design">디자인</button>
       <button data-tab="account">계정</button>
       <button data-tab="data">데이터</button>

@@ -7,7 +7,8 @@ Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $AE = [System.Windows.Automation.AutomationElement]
 $Scope = [System.Windows.Automation.TreeScope]
 $True_ = [System.Windows.Automation.Condition]::TrueCondition
-$Out = Join-Path $PSScriptRoot "오늘자료\휴대폰메시지.txt"
+. (Join-Path $PSScriptRoot "공통.ps1")
+$Out = Join-Path $RB.work "휴대폰메시지.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 $sb = New-Object System.Text.StringBuilder
 function Finish($note) {

@@ -1,7 +1,7 @@
 ﻿param([int]$MaxRooms = 0, [switch]$Retry)
 # 매일 아침: 방 열고 Ctrl+S → 어제·오늘 대화만 모으기. AI를 쓰지 않는다.
 $ErrorActionPreference = "Stop"
-$here = $PSScriptRoot; $out = Join-Path $here "오늘자료"; $raw = Join-Path $out "카톡원본"
+$here = $PSScriptRoot; . (Join-Path $here "공통.ps1"); $out = $RB.work; $raw = Join-Path $out "카톡원본"
 New-Item -ItemType Directory -Force $raw | Out-Null
 if (-not $Retry) { Get-ChildItem -LiteralPath $raw -Filter *.txt -File -ErrorAction SilentlyContinue | Remove-Item -Force }
 $resFile = Join-Path $out "카톡_실행기록.json"; $recent = Join-Path $out "카카오톡_최근대화.txt"
@@ -11,7 +11,11 @@ if ($Retry) {
   # 저장 못 한 방만 다시: 이번 결과를 지난 기록에 합친다
   $prev = Get-Content -LiteralPath $resFile -Raw -Encoding UTF8 | ConvertFrom-Json
   $names = @(@($prev.errors) | ForEach-Object { [string]$_.room } | Where-Object { $_ -and $_ -notmatch '^목록 위치' })
-  if (-not $names.Count) { "다시 시도할 방이 없어요"; exit }
+  if (-not $names.Count) {
+    # 방 이름이 없는 실패(로그아웃 등)면 처음부터 다시 저장한다
+    if (-not @(@($prev.errors) | Where-Object { $_ }).Count) { "다시 시도할 방이 없어요"; exit }
+    & $ps -NoProfile -ExecutionPolicy Bypass -File $PSCommandPath -MaxRooms $MaxRooms; exit
+  }
   $tmp = Join-Path $out "카톡_다시시도.json"
   & $ps -NoProfile -ExecutionPolicy Bypass -STA -File (Join-Path $here "카톡방_내보내기.ps1") -OutDir $raw -ResultFile $tmp -Days 7 -Only ($names -join ",")
   $now = Get-Content -LiteralPath $tmp -Raw -Encoding UTF8 | ConvertFrom-Json

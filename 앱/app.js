@@ -50,7 +50,35 @@ function parse(text) {
 const P = Object.assign({ start: "today", view: "board", showDone: true }, store.get("rb.prefs", {}));
 if (P.start === "up") P.start = "today";
 let tasks = store.get("rb.tasks", {});
-const saveAll = () => store.set("rb.tasks", tasks);
+// 바뀐 할 일에 시각을 찍어 두고, 구글 동기화 때 더 새것을 고른다
+let snap = null, tomb = store.get("rb.tomb", {}), syncTimer = null;
+const taskJson = t => { const { up, ...r } = t; return JSON.stringify(r); };
+const takeSnap = () => { snap = {}; for (const [id, t] of Object.entries(tasks)) snap[id] = taskJson(t); };
+function saveAll() {
+  if (snap) {
+    let changed = false;
+    for (const [id, t] of Object.entries(tasks)) { const j = taskJson(t); if (snap[id] !== j) { t.up = Date.now(); snap[id] = j; changed = true; } }
+    for (const id of Object.keys(snap)) if (!tasks[id]) { tomb[id] = Date.now(); delete snap[id]; changed = true; }
+    if (changed) { store.set("rb.tomb", tomb); clearTimeout(syncTimer); syncTimer = setTimeout(() => syncNow(), 3000); }
+  }
+  store.set("rb.tasks", tasks);
+}
+let reportPc = "", briefsSeen = {};
+async function syncNow(extra) {
+  if (!window.rb || !window.rb.syncDoc) return;
+  const r = await window.rb.syncDoc({ tasks, tomb, newsHidden, ...(extra || {}) });
+  if (!r.ok || !r.value || r.value.off) return;
+  const doc = r.value.doc; reportPc = doc.reportPc || "";
+  if (r.value.switched) { toast("아침 보고 컴퓨터가 " + r.value.switched + "(으)로 옮겨져 이 컴퓨터의 예약을 껐습니다"); }
+  newsHidden = doc.newsHidden || newsHidden; store.set("rb.news.hidden", newsHidden);
+  tomb = doc.tomb || tomb; store.set("rb.tomb", tomb);
+  let fresh = false;
+  for (const d of Object.values(doc.briefs || {}).sort((a, b) => a.date.localeCompare(b.date))) if (!briefsSeen[d.date + d.time]) { briefsSeen[d.date + d.time] = 1; ingest(d); fresh = true; }
+  if (!open) { const next = doc.tasks || {}; for (const [id, t] of Object.entries(tasks)) if (!next[id] && !tomb[id]) next[id] = t; tasks = next; takeSnap(); }
+  store.set("rb.tasks", tasks);
+  const su = await window.rb.getSetup(); if (su.ok) showRole(su.value);
+  render(); if (fresh && latest) notice(latest);
+}
 const savePrefs = () => store.set("rb.prefs", P);
 let page = P.start, query = "", latest = null, open = null, editing = null;
 
@@ -215,21 +243,26 @@ function notice(d) {
   const seen = (sec("확인한 자료") || { items: [] }).items.map(plain);
   const fail = (sec("실패한 단계") || { items: [] }).items.map(plain).filter(t => !/^(없|실패한 단계는 없|실패 없)/.test(t));
   const rooms = (d.failed || []).map(f => f.room).filter(r => r && !/^목록 위치/.test(r));
+  const needLogin = (d.failed || []).some(f => /로그인|채팅 목록|켜져 있지 않/.test(f.msg || ""));
   const id = "rb.note." + d.date + "." + d.time;
-  if ((!added.length && !seen.length && !fail.length && !rooms.length) || store.get(id, false)) { $("note").hidden = true; return; }
+  if ((!added.length && !seen.length && !fail.length && !rooms.length && !needLogin) || store.get(id, false)) { $("note").hidden = true; return; }
   const chips = [];
   if (added.length) chips.push(`<span class="stat new">새 일정 <b>${added.length}</b></span>`);
   for (const s of seen) { const m = s.match(/^(메일|문자|카톡)\D*(\d+)/); if (m) chips.push(`<span class="stat">${m[1]} <b>${m[2]}</b></span>`); }
+  if (needLogin) chips.push('<span class="stat warn">카톡 로그인 필요</span>');
   if (rooms.length) chips.push(`<span class="stat warn">저장 실패 <b>${rooms.length}</b></span>`);
   $("stats").innerHTML = chips.join("");
   const rows = [];
   if (added.length) rows.push(["캘린더에 넣음", "<ul>" + added.map(a => `<li>${esc(a)}</li>`).join("") + "</ul>"]);
   if (seen.length) rows.push(["확인한 자료", esc(seen.join(" · "))]);
-  if (rooms.length) rows.push(["저장 못 한 방", esc(rooms.join(", ")) + "<br>바탕화면의 RamBriefing 다시 시도를 실행하세요"]);
+  if (rooms.length) rows.push(["저장 못 한 방", esc(rooms.join(", ")) + "<br>위의 다시 시도를 누르세요"]);
+  if (needLogin) rows.push(["카톡", "로그인되어 있지 않아 카톡은 건너뛰고 나머지만 정리했어요. 카톡에 로그인한 뒤 다시 시도를 누르세요."]);
   if (fail.length) rows.push(["문제", esc(fail.join(" "))]);
   $("noteDetail").innerHTML = "<dl>" + rows.map(r => `<dt>${r[0]}</dt><dd>${r[1]}</dd>`).join("") + "</dl>";
   $("note").hidden = false;
   $("noteX").onclick = () => { store.set(id, true); $("note").hidden = true; };
+  const rb = $("noteRetry"); rb.hidden = !((rooms.length || needLogin) && window.rb && window.rb.retry);
+  rb.onclick = async () => { rb.disabled = true; rb.textContent = "다시 정리하는 중…"; const r = await window.rb.retry(); if (!r.ok) { toast(r.error); rb.disabled = false; rb.textContent = "다시 시도"; } else toast("다시 정리합니다. 끝나면 화면이 새로 고쳐집니다"); };
 }
 function renderDrawer() {
   const t = tasks[open]; if (!t) { closeDrawer(); return; }
@@ -385,6 +418,7 @@ async function tabAccount(el) {
   <div class="opt"><div>구글 캘린더<small>${googleOn ? "연결됨. 넣은 일정은 구글 캘린더에 바로 들어갑니다" : "구글로 로그인하면 캘린더를 보고 바로 넣을 수 있습니다"}</small></div><button class="btn${googleOn ? "" : " main"}" data-g="${googleOn ? "out" : "in"}">${googleOn ? "로그아웃" : "구글 로그인"}</button></div>
   ${builtin ? "" : `<div class="opt" style="display:block;padding:12px 0"><div>클라이언트 보안 비밀번호<small>${secretOn ? "새 값이 저장되어 있습니다. 바꿀 때만 다시 넣으세요." : "구글 클라우드에서 바꾼 새 값을 붙여 넣고 저장하세요. 다시 표시되지 않습니다."}</small></div>
     <div style="display:flex;gap:8px;margin-top:8px"><input id="secretIn" type="password" autocomplete="off" spellcheck="false" placeholder="GOCSPX-…" aria-label="클라이언트 보안 비밀번호" style="flex:1;min-width:0;height:36px;border:1px solid var(--line-strong);border-radius:8px;background:var(--raised);padding:0 10px"><button class="btn" data-g="secret">저장</button></div></div>`}
+  <div class="opt"><div>집·학교 동기화<small>${!googleOn ? "구글로 로그인하면 같은 계정의 컴퓨터끼리 할 일과 완료, 정리 결과가 맞춰집니다" : st.ok && st.value.sync === "relogin" ? "동기화 권한이 없습니다. 로그아웃 후 다시 로그인해 주세요" : st.ok && st.value.syncAt ? "맞춰짐. 내 구글 드라이브의 앱 전용 공간에 저장합니다" : "내 구글 드라이브의 앱 전용 공간에 저장합니다"}</small></div></div>
   <div class="opt"><div>챗봇<small>Antigravity의 구글 계정으로 제미나이가 답합니다. 무료 사용량을 넘으면 잠시 쉬어야 합니다.</small></div></div>`;
   el.onclick = async e => {
     const b = e.target.closest("[data-g]"); if (!b) return;
@@ -394,10 +428,59 @@ async function tabAccount(el) {
     tabAccount(el);
   };
 }
+// 컴퓨터 설정: 아침 보고를 받을 컴퓨터를 정한다. 처음 켤 때도 이 화면이 뜬다.
+function pcRoleText(s) { if (!s || !s.done) return ""; return s.role === "this" ? "아침 보고: 이 컴퓨터" : s.role === "other" ? "보고는 " + (reportPc || "다른") + " 컴퓨터에서 받아요" : "아침 보고: 사용 안 함"; }
+function showRole(s) { const t = pcRoleText(s), e = $("pcRole"); e.textContent = t; e.hidden = !t; }
+async function tabPc(el, first) {
+  if (!window.rb || !window.rb.getSetup) { el.innerHTML = '<h3>컴퓨터</h3><div class="opt"><div>컴퓨터 설정은 설치형 앱에서 쓸 수 있습니다</div></div>'; return; }
+  el.innerHTML = '<h3>컴퓨터</h3><p class="dz-hint">확인하는 중…</p>';
+  const [a, b] = await Promise.all([window.rb.getSetup(), window.rb.checkEnv()]);
+  const env = b.ok ? b.value : { pc: "" };
+  const s = Object.assign({ role: "this", sources: env.claude === "ok" ? ["kakao", "sms", "mail"] : ["kakao", "sms"], time: "06:00", engine: env.claude === "ok" ? "claude" : "gemini" }, a.ok ? a.value : {});
+  const LINE = (ok, name, msg) => '<div class="chk-row"><i class="' + (ok ? "ok" : "no") + '">' + (ok ? "✓" : "!") + "</i><div><b>" + esc(name) + "</b><small>" + esc(msg) + "</small></div></div>";
+  const kakaoMsg = { ok: ["카톡 PC 로그인됨", 1], login: ["로그인되어 있지 않아요. 아침에 로그아웃 상태면 카톡만 건너뛰고 나머지를 정리해요", 0], off: ["꺼져 있어요. 아침에 자동으로 켜 보지만, 로그인이 풀려 있으면 건너뛰어요", 0], none: ["이 컴퓨터에 카카오톡 PC가 없어요", 0] }[env.kakao] || ["확인하지 못했어요", 0];
+  const checks = env.auto ? LINE(kakaoMsg[1], "카카오톡", kakaoMsg[0]) + LINE(env.phone === "ok", "휴대폰과 연결", env.phone === "ok" ? "설치됨. 휴대폰 연결은 아침에 다시 확인해요" : "설치되어 있지 않아요") + '<div id="aiCheck"></div>' : '<p class="dz-hint">아침 정리 파일을 찾지 못했습니다. 다시 설치해 주세요.</p>';
+  const moved = reportPc && reportPc !== env.pc ? '<div class="move-note" id="moveNote"><b>지금 보고 컴퓨터는 ' + esc(reportPc) + '예요.</b><br>여기로 옮기면 ' + esc(reportPc) + '의 예약은 그 컴퓨터에서 앱을 켤 때 꺼져요. 카톡 PC 로그인은 한 대만 되니, 여기서 카톡에 로그인하면 ' + esc(reportPc) + '의 카톡은 로그아웃돼요.</div>' : "";
+  const R = (v, t, d) => '<label class="role-card"><input type="radio" name="pcRole" value="' + v + '"' + (s.role === v ? " checked" : "") + "><span><b>" + t + "</b><small>" + d + "</small></span></label>";
+  const C = (v, t) => '<label class="src-chip"><input type="checkbox" data-src="' + v + '"' + (s.sources.includes(v) ? " checked" : "") + "><span>" + t + "</span></label>";
+  el.innerHTML = "<h3>" + (first ? "처음 설정" : "컴퓨터") + '</h3><p class="dz-hint">지금 컴퓨터: <b>' + esc(env.pc || "알 수 없음") + "</b></p>"
+    + '<div class="set-q">아침 보고를 받을 컴퓨터가 지금 이 컴퓨터인가요?</div><div class="role-list">'
+    + R("this", "네, 이 컴퓨터예요", "이 컴퓨터에 아침 예약을 걸어요. 그 시각에 꺼져 있으면 다음에 켤 때 바로 실행해요.")
+    + R("other", "아니요, 다른 컴퓨터예요", "이 컴퓨터에서는 예약을 끄고 할 일만 봐요.")
+    + R("later", "아직 모르겠어요", "할 일 앱으로만 써요. 여기서 나중에 바꿀 수 있어요.") + "</div>" + moved
+    + '<div id="pcThis"><div class="set-q">무엇을 읽을까요?</div><div class="src-list">' + C("kakao", "카톡") + C("sms", "휴대폰 문자") + C("mail", "메일") + "</div>"
+    + '<div class="set-q">몇 시에 받을까요?</div><input type="time" id="pcTime" class="pc-time" value="' + esc(s.time) + '" aria-label="받을 시각"><p class="dz-hint" style="margin-top:6px">카톡은 50분 전, 문자는 10분 전부터 미리 읽어요.</p>'
+    + '<div class="set-q">무엇으로 정리할까요?</div><div class="role-list">'
+    + '<label class="role-card"><input type="radio" name="pcAi" value="gemini"' + (s.engine === "gemini" ? " checked" : "") + '><span><b>무료 제미나이</b><small>구글 AI Studio에서 받은 무료 키를 넣어요. 메일은 읽지 않고, 일정은 할 일에서 눌러 넣어요.</small></span></label>'
+    + (env.claude === "ok" ? '<label class="role-card"><input type="radio" name="pcAi" value="claude"' + (s.engine === "claude" ? " checked" : "") + '><span><b>Claude 구독</b><small>메일까지 읽고 일정을 캘린더에 바로 넣어요.</small></span></label>' : "") + "</div>"
+    + '<div id="aiKey" class="key-row"><input id="geminiIn" type="password" autocomplete="off" spellcheck="false" placeholder="제미나이 키 붙여 넣기" aria-label="제미나이 키"><button class="btn" data-pc="key">확인 후 저장</button><a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener">무료 키 받기</a></div>'
+    + '<div class="set-q">준비 점검 <button class="btn" data-pc="check" style="min-height:30px;margin-left:8px">다시 점검</button></div>' + checks + "</div>"
+    + '<div class="dz-foot"><button class="btn main" data-pc="save">저장</button></div>';
+  let hasKey = !!env.gemini;
+  const sync = () => {
+    const role = el.querySelector('input[name="pcRole"]:checked').value, ai = el.querySelector('input[name="pcAi"]:checked').value;
+    $("pcThis").hidden = role !== "this"; if ($("moveNote")) $("moveNote").hidden = role !== "this";
+    $("aiKey").hidden = ai !== "gemini";
+    const m = el.querySelector('[data-src="mail"]'); m.disabled = ai === "gemini"; if (ai === "gemini") m.checked = false;
+    if ($("aiCheck")) $("aiCheck").innerHTML = ai === "gemini" ? LINE(hasKey, "무료 제미나이", hasKey ? "키 저장됨" : "키를 넣어 주세요") : LINE(true, "Claude", "설치됨");
+  };
+  sync(); el.onchange = sync; requestAnimationFrame(() => { el.closest(".m-main").scrollTop = 0; });
+  el.onclick = async e => {
+    const x = e.target.closest("[data-pc]"); if (!x) return;
+    if (x.dataset.pc === "check") return tabPc(el, first);
+    if (x.dataset.pc === "key") { const i = $("geminiIn"); x.disabled = true; x.textContent = "확인하는 중…"; const k = await window.rb.setGemini(i.value); i.value = ""; x.disabled = false; x.textContent = "확인 후 저장"; if (k.ok) { hasKey = true; sync(); toast("제미나이 키를 저장했습니다"); } else toast(k.error); return; }
+    x.disabled = true; x.textContent = "적용하는 중…";
+    const r = await window.rb.saveSetup({ role: el.querySelector('input[name="pcRole"]:checked').value, sources: [...el.querySelectorAll("[data-src]:checked")].map(i => i.dataset.src), time: $("pcTime").value, engine: el.querySelector('input[name="pcAi"]:checked').value });
+    x.disabled = false; x.textContent = "저장";
+    if (!r.ok) { toast(r.error); return; }
+    showRole(r.value); toast("저장했습니다"); if (first) closeSettings();
+  };
+}
 function setTab(name) {
   document.querySelectorAll(".m-side [data-tab]").forEach(b => b.setAttribute("aria-current", b.dataset.tab === name));
   const el = $("settingsBody"); el.onclick = el.onchange = null;
   if (name === "general") tabGeneral(el);
+  if (name === "pc") tabPc(el);
   if (name === "design") { el.innerHTML = '<h3>디자인</h3><div id="skinMount"></div>'; window.RBSkin.mount($("skinMount")); }
   if (name === "account") tabAccount(el);
   if (name === "data") tabData(el);
@@ -407,6 +490,19 @@ function closeSettings() { $("settingsBack").hidden = true; $("openSettings").fo
 $("openSettings").onclick = () => { $("settingsBack").hidden = false; setTab("general"); };
 $("settingsX").onclick = closeSettings;
 $("settingsBack").addEventListener("mousedown", e => { if (e.target.id === "settingsBack") closeSettings(); });
+// 설정 창 끌어서 옮기기: 스킨을 고르면서 뒤 화면을 볼 수 있게. 버튼·입력칸·스크롤바에서는 끌지 않는다.
+(() => {
+  const box = document.querySelector("#settingsBack .modal"); let x = 0, y = 0, from = null;
+  const move = (nx, ny) => { const r = box.getBoundingClientRect(), keep = 80; x = Math.min(innerWidth - keep - (r.left - x), Math.max(keep - r.width - (r.left - x), nx)); y = Math.min(innerHeight - 40 - (r.top - y), Math.max(-(r.top - y), ny)); box.style.transform = `translate(${x}px,${y}px)`; };
+  box.addEventListener("mousedown", e => {
+    if (e.button !== 0 || e.target.closest("button,a,input,select,textarea,label,option")) return;
+    const main = e.target.closest(".m-main"); if (main && e.clientX > main.getBoundingClientRect().right - 20) return;
+    from = { px: e.clientX, py: e.clientY, x, y }; box.classList.add("dragging"); e.preventDefault();
+  });
+  window.addEventListener("mousemove", e => { if (from) move(from.x + e.clientX - from.px, from.y + e.clientY - from.py); });
+  window.addEventListener("mouseup", () => { from = null; box.classList.remove("dragging"); });
+  window.addEventListener("resize", () => move(x, y));
+})();
 document.querySelector(".m-side").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) setTab(b.dataset.tab); });
 
 // 시작
@@ -418,14 +514,17 @@ const loadDay = day => new Promise(ok => {
   document.head.appendChild(s);
 });
 (async function start() {
-  for (const day of [...(window.RAM_DAYS || [])].sort()) { const d = await loadDay(day); if (d) ingest(d); }
-  migrate(); await refreshGoogle(); render();
+  if (window.rb && window.rb.getBriefings) { const b = await window.rb.getBriefings(); if (b.ok) for (const d of b.value) { briefsSeen[d.date + d.time] = 1; ingest(d); } }
+  else for (const day of [...(window.RAM_DAYS || [])].sort()) { const d = await loadDay(day); if (d) ingest(d); }
+  migrate(); await refreshGoogle(); render(); takeSnap();
   if (latest) notice(latest);
   document.addEventListener("rb-skin", () => renderHead());
   const hash = location.hash.slice(1);
   if (hash === "all") { page = "all"; render(); }
   if (hash === "news") { page = "news"; render(); }
+  if (window.rb && window.rb.getSetup) { const su = await window.rb.getSetup(); if (su.ok) { showRole(su.value); if (!su.value.done && !hash.startsWith("set-")) { $("settingsBack").hidden = false; document.querySelectorAll(".m-side [data-tab]").forEach(b => b.setAttribute("aria-current", b.dataset.tab === "pc")); tabPc($("settingsBody"), true); } } }
   if (hash.startsWith("set-")) { $("settingsBack").hidden = false; setTab(hash.slice(4)); }
+  syncNow(); setInterval(() => syncNow(), 10 * 60000); window.addEventListener("focus", () => syncNow());
   // 자정이 지나면 완료한 일이 기록으로 넘어가도록 다시 그린다
   let last = today(); setInterval(() => { if (today() !== last) { last = today(); render(); } }, 60000);
 })();
