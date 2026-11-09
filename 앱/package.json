@@ -1,7 +1,7 @@
 {
   "name": "rambriefing",
   "productName": "RamBriefing",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "아침마다 할 일을 정리해 주는 선생님용 할 일 앱",
   "main": "main.js",
   "author": "RamBriefing",

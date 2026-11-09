@@ -168,7 +168,9 @@ const writeSetup = v => fs.writeFileSync(setupFile(), JSON.stringify(v));
 async function checkEnv() { if (!hasAuto()) return { pc: PC, auto: false }; return { ...JSON.parse(await runPs("준비점검.ps1")), auto: true, gemini: !!savedGemini() }; }
 async function saveSetup(s) {
   const role = ["this", "other", "later"].includes(s.role) ? s.role : "later";
-  const sources = (s.sources || []).filter(x => ["kakao", "sms", "mail", "school"].includes(x));
+  const sources = (s.sources || []).filter(x => ["kakao", "sms", "mail", "school", "other"].includes(x));
+  const otherApps = String(s.otherApps || "").split(",").map(x => x.trim().replace(/["'`$;|&<>]/g, "")).filter(Boolean).slice(0, 5).join(",");
+  if (sources.includes("other") && !otherApps) throw new Error("읽을 메신저 이름을 넣어 주세요");
   const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(s.time) ? s.time : "06:00";
   const engine = s.engine === "claude" ? "claude" : "gemini";
   if (hasAuto()) {
@@ -180,9 +182,9 @@ async function saveSetup(s) {
     } else await runPs("예약설정.ps1", ["-Off"]);
   }
   const o = s.opts || {}, opts = { autoCal: o.autoCal !== false, report: o.report !== false, notify: o.notify !== false, news: o.news !== false };
-  const v = { done: true, role, sources, time, engine, opts, pc: PC, at: Date.now() };
+  const v = { done: true, role, sources, otherApps, time, engine, opts, pc: PC, at: Date.now() };
   writeSetup(v);
-  if (hasAuto() && role === "this") { fs.mkdirSync(baseDir(), { recursive: true }); fs.writeFileSync(cfgFile(), JSON.stringify({ ...readCfg(), ...opts })); }   // 아침 정리 스크립트가 읽는다
+  if (hasAuto() && role === "this") { fs.mkdirSync(baseDir(), { recursive: true }); fs.writeFileSync(cfgFile(), JSON.stringify({ ...readCfg(), ...opts, otherApps })); }   // 아침 정리 스크립트가 읽는다
   if (role === "this" && loadRefresh()) syncDoc({ reportPc: PC, reportAt: v.at }).catch(() => {});
   return v;
 }
@@ -235,7 +237,7 @@ function notifyBrief(d, err) {
 }
 // 원본 보관: 정리할 때 쓴 자료를 앱 전용 폴더에 30일 둔다. 동기화하지 않고 이 PC에만 남는다.
 const archiveRoot = () => path.join(app.getPath("userData"), "archive");
-const ARCHIVE_DAYS = 30, ARCHIVE_FILES = ["학교메신저.txt", "휴대폰메시지.txt", "카카오톡_최근대화.txt"];
+const ARCHIVE_DAYS = 30, ARCHIVE_FILES = ["학교메신저.txt", "휴대폰메시지.txt", "기타메신저.txt", "카카오톡_최근대화.txt"];
 function archiveSave() {
   const d = new Date(), name = d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) + "_" + pad2(d.getHours()) + pad2(d.getMinutes()), dir = path.join(archiveRoot(), name);
   fs.mkdirSync(dir, { recursive: true });
@@ -256,6 +258,8 @@ function originalOf(key) {
     if (f === "학교메신저.txt") {
       const head = /^\[(브리티|GOE) /, s = Math.max(up(head), 0); let e = s + 1; while (e < lines.length && !head.test(lines[e])) e++;
       title = lines[s].replace(/^\[([^\]]+)\]\s*/, "$1 · "); text = lines.slice(s + 1, e).join("\n");
+    } else if (f === "기타메신저.txt") {
+      const s = up(/^=== .+ ===$/); title = "메신저 · " + (s >= 0 ? lines[s].replace(/^=== | ===$/g, "") : ""); text = lines.slice(Math.max(i - 2, s + 1), i + 3).filter(Boolean).join("\n");
     } else if (f === "휴대폰메시지.txt") {
       const s = up(/^=== .+ ===$/); title = "문자 · " + (s >= 0 ? lines[s].replace(/^=== | ===$/g, "") : ""); text = lines[i].replace(/\.\s*(\d{1,2}) (\d{1,2}), (\d{4}) (\d{1,2}:\d{2} (오전|오후))\..*$/, "\n($1/$2 $5 $4)");
     } else {
@@ -310,6 +314,7 @@ function runNow() {
     if (src.includes("kakao")) { runStep = "카톡 읽는 중"; await runPs("카톡_아침내보내기.ps1", [], 40 * 60000, true).catch(e => log("now kakao " + e.message)); }
     if (src.includes("sms")) { runStep = "문자 읽는 중"; await runPs("문자_읽기.ps1", [], 30 * 60000, true).catch(e => log("now sms " + e.message)); }
     if (src.includes("school")) { runStep = "학교 메신저 읽는 중"; await runPs("학교메신저_읽기.ps1", [], 30 * 60000, true).catch(e => log("now school " + e.message)); }
+    if (src.includes("other")) { runStep = "다른 메신저 읽는 중"; await runPs("기타메신저_읽기.ps1", [], 5 * 60000, true).catch(e => log("now other " + e.message)); }
   })().finally(() => { retrying = false; runMorning(); });
   return "started";
 }

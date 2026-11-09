@@ -21,8 +21,10 @@ public class RBK {
 $kp = @(Get-Process KakaoTalk)
 $kakao = if (-not (Find-Kakao) -and -not $kp.Count) { "none" } elseif (-not $kp.Count) { "off" } elseif ([RBK]::HasList([int[]]@($kp | ForEach-Object { $_.Id }))) { "ok" } else { "login" }
 $phone = if (Get-AppxPackage -Name Microsoft.YourPhone) { "ok" } else { "none" }
-$school = if (Get-StartApps | Where-Object { $_.Name -match '^(Brity Messenger|GOE메신저)$' }) { "ok" } else { "none" }
+$startApps = @(Get-StartApps)
+$school = if ($startApps | Where-Object { $_.Name -match '^(Brity Messenger|GOE메신저)$' }) { "ok" } else { "none" }
+$apps = @($startApps | ForEach-Object { $_.Name } | Where-Object { $_ -notmatch '제거|Uninstall|설치|^https?' } | Sort-Object -Unique | Select-Object -First 400)
 $claude = if (Test-Path -LiteralPath (Join-Path $HOME ".local\bin\claude.exe")) { "ok" } else { "none" }
 $tasks = @(Get-ScheduledTask -TaskName "RamBriefing*")
 [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false)
-@{ pc = $env:COMPUTERNAME; kakao = $kakao; phone = $phone; school = $school; claude = $claude; tasks = $tasks.Count; tasksOn = @($tasks | Where-Object { $_.State -ne "Disabled" }).Count } | ConvertTo-Json -Compress
+@{ pc = $env:COMPUTERNAME; kakao = $kakao; phone = $phone; school = $school; apps = $apps; claude = $claude; tasks = $tasks.Count; tasksOn = @($tasks | Where-Object { $_.State -ne "Disabled" }).Count } | ConvertTo-Json -Compress

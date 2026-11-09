@@ -819,3 +819,5 @@ body{background:var(--wall,var(--bg))}
 .src-bar button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
 .src-bar button[aria-pressed="true"] em{color:#fff}
 .src-bar{margin:0 16px 10px}
+.other-box{margin-top:10px}
+.other-box[hidden]{display:none}

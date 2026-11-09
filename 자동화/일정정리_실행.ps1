@@ -5,7 +5,7 @@ foreach ($n in "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_API_KEY") { 
 $tools = "mcp__claude_ai_Gmail__search_threads,mcp__claude_ai_Gmail__get_thread,mcp__claude_ai_Gmail__get_message,mcp__claude_ai_Google_Calendar__list_calendars,mcp__claude_ai_Google_Calendar__list_events,mcp__claude_ai_Google_Calendar__search_events,mcp__claude_ai_Google_Calendar__create_event,mcp__claude_ai_Google_Calendar__get_event,mcp__claude_ai_PlayMCP__KakaotalkChat-MemoChat,Read"
 $prompt = [IO.File]::ReadAllText((Join-Path $here "일정정리_지시.md"), [Text.Encoding]::UTF8)
 $cfg = $RB.cfg
-if (Test-Path -LiteralPath $cfg) { $src = @((Get-Content -LiteralPath $cfg -Raw -Encoding UTF8 | ConvertFrom-Json).sources); $skip = @(@{ k = "mail"; n = "메일" }, @{ k = "sms"; n = "휴대폰 문자" }, @{ k = "kakao"; n = "카톡" }, @{ k = "school"; n = "학교 메신저" } | Where-Object { $src -notcontains $_.k } | ForEach-Object { $_.n }); if ($skip.Count) { $prompt = "이 사용자는 다음 자료를 쓰지 않습니다. 읽지 말고 '확인한 자료'에 '사용 안 함'으로 적습니다: " + ($skip -join ", ") + "`n`n" + $prompt } }
+if (Test-Path -LiteralPath $cfg) { $src = @((Get-Content -LiteralPath $cfg -Raw -Encoding UTF8 | ConvertFrom-Json).sources); $skip = @(@{ k = "mail"; n = "메일" }, @{ k = "sms"; n = "휴대폰 문자" }, @{ k = "kakao"; n = "카톡" }, @{ k = "school"; n = "학교 메신저" }, @{ k = "other"; n = "다른 메신저" } | Where-Object { $src -notcontains $_.k } | ForEach-Object { $_.n }); if ($skip.Count) { $prompt = "이 사용자는 다음 자료를 쓰지 않습니다. 읽지 말고 '확인한 자료'에 '사용 안 함'으로 적습니다: " + ($skip -join ", ") + "`n`n" + $prompt } }
 # 사람마다 고른 설정: 끈 일은 지시와 도구에서 함께 뺀다
 if (Test-Path -LiteralPath $cfg) {
   $o = Get-Content -LiteralPath $cfg -Raw -Encoding UTF8 | ConvertFrom-Json; $off = @()

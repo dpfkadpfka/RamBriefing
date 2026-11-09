@@ -302,7 +302,7 @@ function notice(d) {
   if ((!added.length && !seen.length && !fail.length && !rooms.length && !needLogin) || store.get(id, false)) { $("note").hidden = true; return; }
   const chips = [];
   if (added.length) chips.push(`<span class="stat new">새 일정 <b>${added.length}</b></span>`);
-  for (const s of seen) { const m = s.match(/^(메일|문자|카톡|학교 메신저)\D*(\d+)/); if (m) chips.push(`<span class="stat">${m[1]} <b>${m[2]}</b></span>`); }
+  for (const s of seen) { const m = s.match(/^(메일|문자|카톡|학교 메신저|다른 메신저)\D*(\d+)/); if (m) chips.push(`<span class="stat">${m[1]} <b>${m[2]}</b></span>`); }
   if (needLogin) chips.push('<span class="stat warn">카톡 로그인 필요</span>');
   if (rooms.length) chips.push(`<span class="stat warn">저장 실패 <b>${rooms.length}</b></span>`);
   $("stats").innerHTML = chips.join("");
@@ -522,9 +522,11 @@ async function tabPc(el, first) {
     + R("this", "네, 이 컴퓨터예요", "이 컴퓨터에 아침 예약을 걸어요. 그 시각에 꺼져 있으면 다음에 켤 때 바로 실행해요.")
     + R("other", "아니요, 다른 컴퓨터예요", "이 컴퓨터에서는 예약을 끄고 할 일만 봐요.")
     + R("later", "아직 모르겠어요", "할 일 앱으로만 써요. 여기서 나중에 바꿀 수 있어요.") + "</div>" + moved
-    + '<div id="pcThis"><div class="set-q">무엇을 읽을까요?</div><div class="src-list">' + C("kakao", "카톡") + C("sms", "휴대폰 문자") + C("mail", "메일") + (env.school === "ok" ? C("school", "학교 메신저") : "") + "</div>" + (env.school === "ok" ? '<p class="dz-hint" style="margin-top:6px">학교 메신저는 브리티·GOE의 어제·오늘 쪽지를 열어 읽어요. 쪽지는 읽음으로 바뀌고, 내용은 정리를 위해 Claude로 보내져요. 제미나이로 정리할 때는 읽지 않아요.</p>' : "")
+    + '<div id="pcThis"><div class="set-q">무엇을 읽을까요?</div><div class="src-list">' + C("kakao", "카톡") + C("sms", "휴대폰 문자") + C("mail", "메일") + (env.school === "ok" ? C("school", "학교 메신저") : "") + C("other", "다른 메신저") + "</div>"
+      + '<div id="otherBox" class="other-box"><input id="otherApps" list="appList" class="pc-time" style="width:100%" autocomplete="off" placeholder="메신저 이름 (예: 쿨메신저). 여러 개면 쉼표로 나눠요" aria-label="읽을 메신저 이름" value="' + esc(s.otherApps || "") + '"><datalist id="appList">' + (env.apps || []).map(n => '<option value="' + esc(n) + '">').join("") + '</datalist><p class="dz-hint" style="margin-top:6px">설치된 앱 이름을 적으면 그 창에 보이는 글자를 읽어요. 쪽지를 열지는 않아서 본문이 잘릴 수 있고, 메신저에 로그인돼 있어야 해요.</p></div>'
+      + (env.school === "ok" ? '<p class="dz-hint" style="margin-top:6px">학교 메신저는 브리티·GOE의 어제·오늘 쪽지를 열어 읽어요. 쪽지는 읽음으로 바뀌고, 내용은 정리를 위해 Claude로 보내져요. 제미나이로 정리할 때는 읽지 않아요.</p>' : "")
     + '<div class="set-q">아침 정리 때 무엇을 할까요?</div><div class="src-list">' + OPT("news", "소소한 소식도 고르기") + OPT("notify", "윈도우 알림") + (env.claude === "ok" ? OPT("autoCal", "캘린더에 일정 넣기") + OPT("report", "카톡으로 보고 보내기") : "") + "</div>"
-    + '<div class="set-q">몇 시에 받을까요?</div><input type="time" id="pcTime" class="pc-time" value="' + esc(s.time) + '" aria-label="받을 시각"><p class="dz-hint" style="margin-top:6px">카톡은 50분 전, 문자는 30분 전, 학교 메신저는 20분 전부터 미리 읽어요.</p>'
+    + '<div class="set-q">몇 시에 받을까요?</div><input type="time" id="pcTime" class="pc-time" value="' + esc(s.time) + '" aria-label="받을 시각"><p class="dz-hint" style="margin-top:6px">카톡은 50분 전, 문자는 30분 전, 메신저는 20분 전부터 미리 읽어요.</p>'
     + '<div class="set-q">무엇으로 정리할까요?</div><div class="role-list">'
     + '<label class="role-card"><input type="radio" name="pcAi" value="gemini"' + (s.engine === "gemini" ? " checked" : "") + '><span><b>무료 제미나이</b><small>구글 AI Studio에서 받은 무료 키를 넣어요. 메일은 읽지 않고, 일정은 할 일에서 눌러 넣어요.</small></span></label>'
     + (env.claude === "ok" ? '<label class="role-card"><input type="radio" name="pcAi" value="claude"' + (s.engine === "claude" ? " checked" : "") + '><span><b>Claude 구독</b><small>메일까지 읽고 일정을 캘린더에 바로 넣어요.</small></span></label>' : "") + "</div>"
@@ -536,7 +538,8 @@ async function tabPc(el, first) {
     const role = el.querySelector('input[name="pcRole"]:checked').value, ai = el.querySelector('input[name="pcAi"]:checked').value;
     $("pcThis").hidden = role !== "this"; if ($("moveNote")) $("moveNote").hidden = role !== "this";
     $("aiKey").hidden = ai !== "gemini";
-    for (const k of ["mail", "school"]) { const m = el.querySelector('[data-src="' + k + '"]'); if (m) { m.disabled = ai === "gemini"; if (ai === "gemini") m.checked = false; } }
+    for (const k of ["mail", "school", "other"]) { const m = el.querySelector('[data-src="' + k + '"]'); if (m) { m.disabled = ai === "gemini"; if (ai === "gemini") m.checked = false; } }
+    $("otherBox").hidden = !el.querySelector('[data-src="other"]').checked;
     if ($("aiCheck")) $("aiCheck").innerHTML = ai === "gemini" ? LINE(hasKey, "무료 제미나이", hasKey ? "키 저장됨" : "키를 넣어 주세요") : LINE(true, "Claude", "설치됨");
   };
   sync(); el.onchange = sync; requestAnimationFrame(() => { el.closest(".m-main").scrollTop = 0; });
@@ -545,7 +548,7 @@ async function tabPc(el, first) {
     if (x.dataset.pc === "check") return tabPc(el, first);
     if (x.dataset.pc === "key") { const i = $("geminiIn"); x.disabled = true; x.textContent = "확인하는 중…"; const k = await window.rb.setGemini(i.value); i.value = ""; x.disabled = false; x.textContent = "확인 후 저장"; if (k.ok) { hasKey = true; sync(); toast("제미나이 키를 저장했습니다"); } else toast(k.error); return; }
     x.disabled = true; x.textContent = "적용하는 중…";
-    const r = await window.rb.saveSetup({ role: el.querySelector('input[name="pcRole"]:checked').value, sources: [...el.querySelectorAll("[data-src]:checked")].map(i => i.dataset.src), time: $("pcTime").value, engine: el.querySelector('input[name="pcAi"]:checked').value, opts: Object.fromEntries([...el.querySelectorAll("[data-opt]")].map(i => [i.dataset.opt, i.checked])) });
+    const r = await window.rb.saveSetup({ role: el.querySelector('input[name="pcRole"]:checked').value, sources: [...el.querySelectorAll("[data-src]:checked")].map(i => i.dataset.src), otherApps: $("otherApps").value, time: $("pcTime").value, engine: el.querySelector('input[name="pcAi"]:checked').value, opts: Object.fromEntries([...el.querySelectorAll("[data-opt]")].map(i => [i.dataset.opt, i.checked])) });
     x.disabled = false; x.textContent = "저장";
     if (!r.ok) { toast(r.error); return; }
     showRole(r.value); toast("저장했습니다"); if (first) closeSettings();
