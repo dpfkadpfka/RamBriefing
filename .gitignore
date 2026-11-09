@@ -1,0 +1,11 @@
+# 개인 자료는 올리지 않는다
+앱/data/
+자동화/오늘자료/
+자동화/결과/
+시안/
+*.log
+node_modules/
+dist/
+
+앱/creds.json
+앱/dist/

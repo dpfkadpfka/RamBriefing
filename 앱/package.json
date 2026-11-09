@@ -1,0 +1,92 @@
+{
+  "name": "rambriefing",
+  "productName": "RamBriefing",
+  "version": "1.0.0",
+  "description": "아침마다 할 일을 정리해 주는 선생님용 할 일 앱",
+  "main": "main.js",
+  "author": "RamBriefing",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win --x64"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2"
+  },
+  "devDependencies": {
+    "electron": "45.2.3",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "kr.rambriefing.app",
+    "productName": "RamBriefing",
+    "executableName": "RamBriefing",
+    "copyright": "RamBriefing",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "agent.js",
+      "app.js",
+      "chat.js",
+      "skin.js",
+      "index.html",
+      "app.css",
+      "icon.png",
+      "app.ico",
+      "mascot.png",
+      "Pretendard.woff2",
+      "icons/**",
+      "creds.json",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "icons",
+        "to": "icons",
+        "filter": [
+          "*.ico"
+        ]
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/icon-1.ico",
+      "artifactName": "RamBriefing-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "RamBriefing",
+      "uninstallDisplayName": "RamBriefing",
+      "installerIcon": "icons/icon-1.ico",
+      "uninstallerIcon": "icons/icon-1.ico",
+      "installerLanguages": [
+        "ko_KR"
+      ],
+      "language": "1042",
+      "deleteAppDataOnUninstall": false
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "dpfkadpfka",
+        "repo": "RamBriefing",
+        "releaseType": "release"
+      }
+    ]
+  }
+}

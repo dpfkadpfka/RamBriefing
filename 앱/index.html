@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RamBriefing</title>
+<link rel="icon" href="icon.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gaegu:wght@400;700&family=Nanum+Pen+Script&family=Gamja+Flower&family=Gowun+Dodum&family=Jua&family=Do+Hyeon&display=swap">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri@2.40.3/dist/galmuri.css">
+<link rel="stylesheet" href="app.css">
+<script src="skin.js"></script>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+ <filter id="chalk" x="-5%" y="-10%" width="110%" height="120%"><feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="2" seed="4" result="n"/><feDisplacementMap in="SourceGraphic" in2="n" scale="2" result="d"/><feColorMatrix in="n" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 -2.2 1.8" result="a"/><feComposite in="d" in2="a" operator="in"/></filter>
+ <filter id="wc" x="-15%" y="-15%" width="130%" height="130%"><feTurbulence type="fractalNoise" baseFrequency=".08" numOctaves="2" seed="8" result="t"/><feDisplacementMap in="SourceGraphic" in2="t" scale="5"/></filter>
+</svg>
+<div class="shell">
+  <nav class="nav" aria-label="메뉴">
+    <div class="brand"><img class="logo" id="logo" src="icons/icon-1.png" alt="" aria-hidden="true">RamBriefing</div>
+    <div class="paperdate" id="paperDate" aria-hidden="true"></div>
+    <div class="find"><input id="q" type="search" placeholder="찾기" aria-label="할 일 찾기"></div>
+    <div id="menu"></div>
+    <div class="nav-h">날짜</div>
+    <div id="topics"></div>
+    <div class="nav-h">보관</div>
+    <div id="menu2"></div>
+    <div class="nav-foot"><button class="nav-it" id="openSettings"><span class="ic" id="gear"></span><span class="n">설정</span></button></div>
+  </nav>
+  <div class="work">
+    <header class="head">
+      <img class="hero-img" src="mascot.png" alt="" aria-hidden="true">
+      <div class="h-t"><h1 id="title"></h1><p id="sub"></p></div>
+      <div class="deco" id="deco" aria-hidden="true"></div>
+      <div class="tools" id="tools">
+        <div class="seg" role="group" aria-label="보기">
+          <button id="vBoard">보드</button><button id="vList">목록</button>
+        </div>
+      </div>
+    </header>
+    <div class="tiles" id="tiles" aria-hidden="true"></div>
+    <div class="bar" id="progress" aria-hidden="true"><i id="progressFill"></i></div>
+    <form class="add" id="addForm">
+      <span class="plus" id="plus"></span>
+      <input id="addInput" placeholder="할 일 추가  (예: 11/12 학년 회의 준비, 내일 보고서 제출)" aria-label="할 일 추가" autocomplete="off">
+    </form>
+    <aside class="note" id="note" hidden>
+      <div class="strip">
+        <span class="lead">오늘 브리핑</span>
+        <div class="stats" id="stats"></div>
+        <button class="ghost" id="more" aria-expanded="false">자세히</button>
+        <button class="icon" id="noteX" aria-label="공지 닫기" title="닫기"></button>
+      </div>
+      <div class="detail" id="noteDetail" hidden></div>
+    </aside>
+    <main id="content" class="content"></main>
+  </div>
+</div>
+<aside class="drawer" id="drawer" hidden aria-label="할 일 상세"></aside>
+<div class="modal-back" id="settingsBack" hidden>
+  <section class="modal" role="dialog" aria-modal="true" aria-label="설정">
+    <div class="m-side">
+      <h2>설정</h2>
+      <button data-tab="general">일반</button>
+      <button data-tab="design">디자인</button>
+      <button data-tab="account">계정</button>
+      <button data-tab="data">데이터</button>
+      <button data-tab="about">정보</button>
+    </div>
+    <div class="m-main">
+      <button class="icon m-x" id="settingsX" aria-label="설정 닫기"></button>
+      <div id="settingsBody"></div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" hidden><span id="toastText"></span><button id="toastBtn">되돌리기</button></div>
+<script src="data/index.js"></script>
+<script src="app.js"></script>
+<script src="chat.js"></script>
+</body>
+</html>
