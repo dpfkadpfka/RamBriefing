@@ -10,7 +10,7 @@
 
 처음 켜면 아침 보고를 받을 컴퓨터, 읽을 자료, 시각, 정리할 AI를 고르는 화면이 나옵니다.
 
-**[사용 가이드 보기](docs/guide/README.md)**
+**[사용 가이드 PDF](docs/guide/guide-rambriefing.pdf)** · [웹에서 보기](docs/guide/README.md)
 
 <img src="docs/guide/01-today.png" alt="오늘 화면" width="720">
 

@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><title>RamBriefing 사용 가이드</title>
+<style>
+@font-face{font-family:F;src:url(https://dpfkadpfka.github.io/fonts/freesentation-400.woff2) format("woff2");font-weight:400}
+@font-face{font-family:F;src:url(https://dpfkadpfka.github.io/fonts/freesentation-600.woff2) format("woff2");font-weight:600}
+@font-face{font-family:F;src:url(https://dpfkadpfka.github.io/fonts/freesentation-800.woff2) format("woff2");font-weight:800}
+@page{size:A4;margin:0}
+:root{--pink:#B26BE0;--pd:#8440B5;--pl:#F1E3FB;--ink:#2B2B33;--sub:#6B6B78;--line:#E6D6F2}
+*{box-sizing:border-box}
+body{margin:0;font-family:F,"Malgun Gothic",sans-serif;color:var(--ink);-webkit-print-color-adjust:exact;print-color-adjust:exact;word-break:keep-all}
+.pg{width:210mm;height:297mm;padding:18mm 17mm 18mm;position:relative;overflow:hidden;page-break-after:always;background:#fff}
+.pg:last-child{page-break-after:auto}
+.no{position:absolute;bottom:9mm;right:17mm;font-size:9pt;color:#bbb}
+.brand{position:absolute;bottom:9mm;left:17mm;font-size:9pt;color:#b9a3cc;font-weight:600}
+.kick{display:inline-block;background:var(--pl);color:var(--pd);font-weight:800;font-size:10pt;padding:3px 11px;border-radius:99px;margin-bottom:8px}
+h1{font-size:25pt;font-weight:800;margin:0 0 6px;letter-spacing:-.5px}
+h2{font-size:14pt;font-weight:800;margin:18px 0 8px;color:var(--pd)}
+p,li{font-size:11pt;line-height:1.65;margin:0}
+.lead{font-size:11.5pt;color:var(--sub);margin-bottom:14px}
+ul{padding-left:18px;margin:4px 0}
+.card{border:1.5px solid var(--line);border-radius:14px;padding:12px 15px;background:#fff}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.card b{display:block;font-size:12pt;margin-bottom:3px}
+.card p{font-size:10pt;color:var(--sub);line-height:1.55}
+.ic{font-size:20pt;line-height:1;margin-bottom:6px}
+.steps{counter-reset:s;list-style:none;padding:0;margin:0}
+.steps li{counter-increment:s;position:relative;padding:7px 0 7px 40px;border-bottom:1px dashed var(--line)}
+.steps li:before{content:counter(s);position:absolute;left:0;top:7px;width:27px;height:27px;border-radius:50%;background:var(--pink);color:#fff;font-weight:800;text-align:center;line-height:27px;font-size:11pt}
+.note{background:#FAF5FE;border-left:4px solid var(--pink);border-radius:8px;padding:9px 13px;font-size:10pt;color:#51465c;margin-top:10px;line-height:1.6}
+.note b{color:var(--pd)}
+.shot{border-radius:12px;box-shadow:0 2px 10px rgba(132,64,181,.16);border:1px solid var(--line);display:block;width:100%}
+.cap{font-size:9.5pt;color:var(--sub);margin-top:6px}
+.tbl{width:100%;border-collapse:collapse;font-size:10.5pt}
+.tbl td,.tbl th{border-bottom:1px solid var(--line);padding:7px 6px;text-align:left;vertical-align:top;line-height:1.5}
+.tbl th{color:var(--pd);font-weight:800;background:#FAF5FE}
+.cover{background:linear-gradient(160deg,#F7ECFF 0%,#E3C7F7 55%,#B26BE0 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}
+.cover h1{font-size:38pt;margin-top:14px}
+.cover .sub{font-size:14.5pt;color:#5d3380;margin-top:4px}
+.cover .ver{margin-top:22px;background:rgba(255,255,255,.75);padding:6px 18px;border-radius:99px;font-weight:600;color:var(--pd)}
+.chip{display:inline-block;border:1.5px solid var(--line);border-radius:99px;padding:1px 10px;font-size:10pt;font-weight:600;background:#fff;margin:0 2px}
+</style></head><body>
+
+<section class="pg cover">
+  <img src="../../앱/icons/icon-1.png" style="width:150px" alt="">
+  <h1>RamBriefing 사용 가이드</h1>
+  <div class="sub">아침마다 흩어진 연락을 모아 오늘 할 일로 정리해 주는 앱</div>
+  <img src="../../앱/mascot.png" style="width:170px;margin-top:26px" alt="">
+  <div class="ver">v1.0.0 · 윈도우 10·11 · 무료</div>
+  <div style="position:absolute;bottom:14mm;font-size:10pt;color:#fff">dpfkadpfka.github.io</div>
+</section>
+
+<section class="pg">
+  <span class="kick">소개</span>
+  <h1>RamBriefing은 이런 걸 해요</h1>
+  <p class="lead">단톡방, 문자, 메일 곳곳에 흩어진 연락을 아침마다 대신 읽어 둬요. 출근하면 정리된 할 일을 확인하고 하나씩 체크하면 돼요.</p>
+  <div class="grid2">
+    <div class="card"><div class="ic">☀️</div><b>아침 정리</b><p>정한 시각에 카톡, 문자, 메일, 학교 메신저를 읽어 할 일과 소식으로 나누고 윈도우 알림으로 알려 줘요.</p></div>
+    <div class="card"><div class="ic">🔎</div><b>출처와 원본</b><p>어디서, 누가, 언제 보냈는지 함께 보여 주고, 버튼 하나로 실제 메시지를 펼쳐 볼 수 있어요.</p></div>
+    <div class="card"><div class="ic">🗂️</div><b>나눠 보기</b><p>메일, 문자, 카톡, 메신저별로 모아 보고, 날짜별과 주제별로도 볼 수 있어요.</p></div>
+    <div class="card"><div class="ic">🎁</div><b>소소한 소식</b><p>할 일은 아니어도 알아 두면 좋은 이벤트, 꿀팁, 추천 자료, 방송 소식을 따로 모아요.</p></div>
+    <div class="card"><div class="ic">🏠</div><b>집·학교 동기화</b><p>같은 구글 계정이면 할 일, 완료, 정리 결과가 맞춰져요. 아침 보고는 컴퓨터 한 대에서 받아요.</p></div>
+    <div class="card"><div class="ic">🎨</div><b>내 맘대로 꾸미기</b><p>스킨 40여 종, 글꼴, 색, 배경 사진, 앱 아이콘 5종까지 바꾸고, 필요 없는 기능은 꺼 둘 수 있어요.</p></div>
+  </div>
+  <h2>이런 화면이에요</h2>
+  <img src="01-today.png" class="shot" style="width:92%;margin:0 auto" alt="오늘 화면">
+  <p class="cap">가이드의 이름과 내용은 모두 예시예요.</p>
+  <div class="brand">RamBriefing 사용 가이드</div><div class="no">2</div>
+</section>
+
+<section class="pg">
+  <span class="kick">시작하기</span>
+  <h1>설치하기</h1>
+  <p class="lead">윈도우 PC에서 쓸 수 있어요. 설치 파일을 받아 실행하면 돼요.</p>
+  <ol class="steps">
+    <li>예람쌤 홈페이지의 RamBriefing 또는 깃허브 릴리스 페이지에서 <b>RamBriefing Setup</b> 파일을 받아요.</li>
+    <li>받은 파일을 실행해요.</li>
+    <li>처음 켜면 <b>처음 설정</b> 창이 한 번 떠요. 다음 쪽을 보고 고른 뒤 <b>저장</b>을 눌러요.</li>
+  </ol>
+  <div class="note"><b>"Windows의 PC 보호" 창이 뜨면</b> [추가 정보] → [실행]을 눌러요. 개인이 만든 무료 프로그램이라 서명이 없어서 나오는 윈도우 안내예요.</div>
+  <div class="note"><b>새 버전은 저절로 바뀌어요.</b> 앱이 새 버전을 찾아 업데이트해요. 다시 받을 필요가 없어요.</div>
+  <h2>읽을 자료별 준비</h2>
+  <table class="tbl">
+    <tr><th style="width:24%">자료</th><th>준비할 것</th></tr>
+    <tr><td><b>카톡</b></td><td>PC 카카오톡을 설치하고 <b>자동 로그인</b>을 켜 둬요. 꺼져 있어도 앱이 켜요.</td></tr>
+    <tr><td><b>휴대폰 문자</b></td><td>윈도우의 <b>휴대폰과 연결</b>에 안드로이드 휴대폰을 연결해 둬요.</td></tr>
+    <tr><td><b>메일</b></td><td>Claude 구독에 지메일을 연결해 둬요. Claude로 정리할 때만 읽어요.</td></tr>
+    <tr><td><b>학교 메신저</b></td><td>브리티나 GOE 메신저에 로그인해 둬요. 설치된 PC에서만 항목이 보이고, Claude로 정리할 때만 읽어요.</td></tr>
+  </table>
+  <div class="note"><b>카톡 PC 로그인은 한 대만 돼요.</b> 다른 컴퓨터에 로그인돼 있으면 이 컴퓨터로 가져오고, 그 컴퓨터의 카톡은 로그아웃돼요. 나중에 다른 기기에서 다시 로그인하면 이 컴퓨터가 로그아웃돼요.</div>
+  <div class="brand">RamBriefing 사용 가이드</div><div class="no">3</div>
+</section>
+
+<section class="pg">
+  <span class="kick">시작하기</span>
+  <h1>처음 설정</h1>
+  <p class="lead">나중에 <b>설정 → 컴퓨터</b>에서 언제든 바꿀 수 있어요.</p>
+  <img src="04-setup.png" class="shot" alt="처음 설정 화면">
+  <h2>이렇게 고르세요</h2>
+  <table class="tbl">
+    <tr><td style="width:30%"><b>보고받을 컴퓨터</b></td><td>매일 아침 켜져 있는 컴퓨터에서 <b>네, 이 컴퓨터예요</b>를 골라요. 다른 컴퓨터에서는 <b>아니요</b>를 고르면 할 일만 봐요.</td></tr>
+    <tr><td><b>읽을 자료</b></td><td>카톡, 휴대폰 문자, 메일, 학교 메신저 중에서 골라요.</td></tr>
+    <tr><td><b>아침 정리 때 할 일</b></td><td>소소한 소식, 윈도우 알림, 캘린더 입력, 카톡 보고를 각각 켜고 꺼요.</td></tr>
+    <tr><td><b>받을 시각</b></td><td>앱은 이 시각보다 먼저 자료를 읽기 시작해요. 카톡은 50분 전부터예요.</td></tr>
+  </table>
+  <h2>정리할 AI 비교</h2>
+  <table class="tbl">
+    <tr><th style="width:30%"></th><th>무료 제미나이</th><th>Claude 구독</th></tr>
+    <tr><td>카톡, 문자</td><td>읽어요</td><td>읽어요</td></tr>
+    <tr><td>메일, 학교 메신저</td><td>읽지 않아요</td><td>읽어요</td></tr>
+    <tr><td>캘린더, 카톡 보고</td><td>자동으로 안 돼요</td><td>자동으로 돼요</td></tr>
+  </table>
+  <div class="brand">RamBriefing 사용 가이드</div><div class="no">4</div>
+</section>
+
+<section class="pg">
+  <span class="kick">매일 쓰기</span>
+  <h1>아침에 이렇게 돌아가요</h1>
+  <p class="lead">정한 시각이 되면 앱을 켜지 않아도 윈도우 예약으로 자료를 읽고 정리해요. 그 시각에 PC가 꺼져 있으면 다음에 켤 때 실행해요.</p>
+  <ol class="steps">
+    <li>카톡, 문자, 학교 메신저를 차례로 읽어요. 카톡을 읽을 때는 창이 열렸다 닫히고 마우스가 움직여요.</li>
+    <li>고른 AI가 할 일과 소소한 소식을 나눠요.</li>
+    <li>끝나면 윈도우 알림으로 알려 줘요.</li>
+  </ol>
+  <h2>왼쪽 메뉴</h2>
+  <table class="tbl">
+    <tr><td style="width:26%"><b>오늘</b></td><td>오늘 날짜의 할 일</td></tr>
+    <tr><td><b>전체</b></td><td>끝내지 않은 모든 할 일</td></tr>
+    <tr><td><b>소소한 소식</b></td><td>이벤트, 꿀팁, 추천, 방송, 소식</td></tr>
+    <tr><td><b>지난 일정</b></td><td>날짜가 지났는데 끝내지 않은 일</td></tr>
+    <tr><td><b>날짜별</b></td><td>앞으로 있는 날짜별 할 일</td></tr>
+    <tr><td><b>날짜 없음</b></td><td>날짜를 찾지 못한 일</td></tr>
+    <tr><td><b>기록, 휴지통</b></td><td>지난날 완료한 일, 지운 일</td></tr>
+  </table>
+  <h2>바로 정리하고 싶을 때</h2>
+  <div class="grid2">
+    <div class="card"><b>지금 정리</b><p>오른쪽 위 버튼이에요. 예약을 기다리지 않고 바로 읽고 정리해요. 실수를 막기 위해 두 번 눌러야 시작해요.</p></div>
+    <div class="card"><b>다시 시도</b><p>카톡을 읽지 못했을 때 공지 줄에 나타나요. 카톡에 로그인한 뒤 눌러요.</p></div>
+  </div>
+  <div class="brand">RamBriefing 사용 가이드</div><div class="no">5</div>
+</section>
+
+<section class="pg">
+  <span class="kick">할 일 보기</span>
+  <h1>어디서 온 일인지 봐요</h1>
+  <h2>메일, 문자, 카톡, 메신저로 나눠 보기</h2>
+  <p>할 일과 소식 위의 버튼을 누르면 그 자료에서 온 것만 보여요.</p>
+  <img src="07-filter.png" class="shot" style="margin:8px auto 0;width:80%" alt="메신저만 보기">
+  <h2>원본 보기</h2>
+  <p>카드를 누르면 오른쪽에 상세 창이 열려요. <b>원본 보기</b>를 누르면 실제 메시지가 펼쳐져요. 메일은 <b>메일에서 보기</b>로 지메일을 열어요.</p>
+  <img src="03-original.png" class="shot" style="margin:8px auto 0;width:80%" alt="원본 보기">
+  <div class="note"><b>원본은 이 PC에 30일 보관해요.</b> 그 뒤에는 "원본을 찾지 못했어요"라고 나와요. 그림으로 된 표와 첨부 파일 내용은 나오지 않아요.</div>
+  <div class="brand">RamBriefing 사용 가이드</div><div class="no">6</div>
+</section>
+
+<section class="pg">
+  <span class="kick">할 일 보기</span>
+  <h1>할 일과 소식 다루기</h1>
+  <table class="tbl">
+    <tr><td style="width:24%"><b>완료</b></td><td>왼쪽 동그라미를 눌러요. 그날까지 줄이 그어져 남고 다음 날 기록으로 넘어가요.</td></tr>
+    <tr><td><b>삭제</b></td><td>카드의 휴지통 아이콘을 눌러요. 바로 되돌리거나 휴지통에서 되살릴 수 있어요. 지운 일은 다음 정리 때 같은 제목으로 나와도 다시 나타나지 않아요.</td></tr>
+    <tr><td><b>수정</b></td><td>카드를 눌러 제목, 내용, 날짜, 주제, 메모를 바꿔요.</td></tr>
+    <tr><td><b>캘린더 등록</b></td><td>구글에 로그인한 뒤 카드의 <b>캘린더 등록</b>을 눌러요.</td></tr>
+    <tr><td><b>직접 추가</b></td><td>위쪽 칸에 "11/12 학년 회의 준비"처럼 적으면 날짜까지 잡혀요.</td></tr>
+  </table>
+  <h2>소소한 소식</h2>
+  <p>꼭 할 일은 아니어도 알아 두면 좋은 것을 모아요. <b>할 일로</b>를 누르면 할 일로 옮기고, <b>지우기</b>를 누르면 사라져요.</p>
+  <img src="02-news.png" class="shot" style="margin-top:8px" alt="소소한 소식">
+  <div class="brand">RamBriefing 사용 가이드</div><div class="no">7</div>
+</section>
+
+<section class="pg">
+  <span class="kick">내 맘대로</span>
+  <h1>사람마다 다르게 쓰기</h1>
+  <h2>설정 → 일반</h2>
+  <p>처음 여는 화면, 기본 보기, 나눠 보기 버튼, 출처, 소소한 소식 메뉴, 앱 아이콘을 골라요. 앱 아이콘을 바꾸면 바탕화면과 시작 메뉴 아이콘도 함께 바뀌어요.</p>
+  <img src="08-general.png" class="shot" style="margin:8px auto 0;width:76%" alt="일반 설정">
+  <h2>설정 → 디자인</h2>
+  <p>스킨, 글꼴, 글자 크기, 색, 배경 사진, 화면 제목, 부를 이름을 바꿔요. 설정 창은 끌어서 옮길 수 있어서 스킨을 고르면서 뒤 화면을 볼 수 있어요.</p>
+  <img src="06-chalk.png" class="shot" style="margin:8px auto 0;width:76%" alt="교실 칠판 스킨">
+  <p class="cap">교실 칠판 스킨</p>
+  <div class="brand">RamBriefing 사용 가이드</div><div class="no">8</div>
+</section>
+
+<section class="pg">
+  <span class="kick">더 알아보기</span>
+  <h1>집과 학교에서, 그리고 문제가 생겼을 때</h1>
+  <h2>집과 학교에서 함께 쓰기</h2>
+  <p>같은 구글 계정으로 로그인하면 할 일, 완료, 정리 결과가 맞춰져요. 다른 컴퓨터에서 <b>네, 이 컴퓨터예요</b>로 저장하면 이전 컴퓨터의 예약은 그 컴퓨터에서 앱을 켤 때 꺼져요.</p>
+  <h2>문제가 생겼을 때</h2>
+  <table class="tbl">
+    <tr><th style="width:30%">증상</th><th>해결</th></tr>
+    <tr><td>카톡을 못 읽었어요</td><td>카톡에 로그인되어 있는지 확인하고 <b>다시 시도</b>를 눌러요.</td></tr>
+    <tr><td>문자가 비어 있어요</td><td><b>휴대폰과 연결</b>에서 휴대폰이 연결되어 있는지 확인해요.</td></tr>
+    <tr><td>학교 메신저를 못 읽었어요</td><td>메신저에 로그인되어 있는지 확인해요. 앱은 비밀번호를 입력하지 않아요.</td></tr>
+    <tr><td>아침에 정리가 안 됐어요</td><td><b>설정 → 컴퓨터</b>의 준비 점검을 보고 다시 저장해요. 또는 <b>지금 정리</b>를 눌러요.</td></tr>
+    <tr><td>구글 동기화가 안 돼요</td><td><b>설정 → 계정</b>에서 로그아웃한 뒤 다시 로그인해요.</td></tr>
+    <tr><td>내용이 비어 있어요</td><td>처음에는 정리 결과가 없어요. <b>지금 정리</b>를 눌러요.</td></tr>
+  </table>
+  <h2>아직 없는 기능</h2>
+  <ul>
+    <li>시스템 트레이 아이콘은 없어요. 앱을 닫아도 아침 정리는 윈도우 예약으로 실행돼요.</li>
+    <li>GOE 대화함은 읽지 않아요. 브리티 대화방은 목록에 보이는 최근 메시지만 읽어요.</li>
+    <li>맥과 휴대폰용 앱은 없고, 아이폰 문자는 읽지 못해요.</li>
+  </ul>
+  <div class="brand">RamBriefing 사용 가이드</div><div class="no">9</div>
+</section>
+
+<section class="pg">
+  <span class="kick">더 알아보기</span>
+  <h1>개인정보 안내</h1>
+  <p class="lead">쓰기 전에 꼭 읽어 주세요.</p>
+  <table class="tbl">
+    <tr><td style="width:28%"><b>내 PC에 저장</b></td><td>할 일, 설정, 원본은 내 PC에 저장해요. 원본은 30일 뒤 자동으로 지워요.</td></tr>
+    <tr><td><b>AI로 보내는 내용</b></td><td>고른 자료의 내용이 정리를 위해 선택한 AI(구글 제미나이 또는 Claude)로 보내져요. 무료 제미나이 키의 입력 내용은 구글 서비스 개선에 쓰일 수 있으니 약관을 확인하고 고르세요.</td></tr>
+    <tr><td><b>학교 메신저</b></td><td>학생과 학부모 정보가 있을 수 있어요. 학교 규정을 확인하고 켜세요. 쪽지는 열어서 읽기 때문에 읽음으로 바뀌어요.</td></tr>
+    <tr><td><b>동기화</b></td><td>로그인하면 할 일, 완료, 정리 결과가 내 구글 드라이브의 앱 전용 공간에 저장돼요. 찾기에 쓰는 짧은 원문 문구도 할 일과 함께 저장될 수 있어요.</td></tr>
+    <tr><td><b>로그인 정보</b></td><td>구글 로그인 정보와 제미나이 키는 PC 안에 암호화해 저장해요.</td></tr>
+  </table>
+  <div class="note"><b>중요한 일은 원본을 확인하세요.</b> AI가 정리한 내용에는 빠지거나 틀린 부분이 있을 수 있어요. 마감처럼 중요한 일은 <b>원본 보기</b>로 한 번 더 확인해 주세요.</div>
+  <div class="brand">RamBriefing 사용 가이드</div><div class="no">10</div>
+</section>
+</body></html>
