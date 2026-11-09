@@ -1,8 +1,9 @@
-﻿# 휴대폰과 연결을 열고 메시지 탭에서 안 읽은 대화를 눌러 내용을 읽어 txt로 저장한다. AI를 쓰지 않는다.
+﻿# 휴대폰과 연결을 열고 메시지 탭에서 어제·오늘 문자를 읽음 여부와 상관없이 모두 읽어 txt로 저장한다. AI를 쓰지 않는다.
 # 대화 선택과 새로 고침만 한다. 답장·보내기·보관 버튼과 입력칸은 건드리지 않는다.
-param([string]$Since = "")   # 예: 2026-10-01 이면 그 날짜 이후 문자를 대화 전체에서 읽음 (평소에는 안 읽은 대화만)
+param([string]$Since = "")   # 예: 2026-10-01 이면 그 날짜 이후 문자를 읽음 (비우면 어제부터)
 $ErrorActionPreference = "SilentlyContinue"
-$SinceDate = $null; if ($Since) { $SinceDate = [datetime]$Since }
+if (-not $Since) { $Since = (Get-Date).Date.AddDays(-1).ToString("yyyy-MM-dd") }
+$SinceDate = [datetime]$Since
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 $AE = [System.Windows.Automation.AutomationElement]
 $Scope = [System.Windows.Automation.TreeScope]
@@ -12,12 +13,14 @@ $Out = Join-Path $RB.work "휴대폰메시지.txt"
 New-Item -ItemType Directory -Force (Split-Path $Out) | Out-Null
 $sb = New-Object System.Text.StringBuilder
 function Finish($note) {
-  $head = "휴대폰 안 읽은 메시지 뽑은 시각 {0}`r`n{1}`r`n`r`n" -f (Get-Date -Format "yyyy-MM-dd HH:mm"), $note
+  $head = "휴대폰 문자 (어제·오늘, 읽음 여부 상관없음) 뽑은 시각 {0}`r`n{1}`r`n`r`n" -f (Get-Date -Format "yyyy-MM-dd HH:mm"), $note
   [IO.File]::WriteAllText($Out, $head + $sb.ToString(), [Text.UTF8Encoding]::new($false))
+  if ($pl -and -not $had) { $wp = $null; if ($pl.TryGetCurrentPattern([System.Windows.Automation.WindowPattern]::Pattern, [ref]$wp)) { $wp.Close() } }   # 처음에 안 열려 있었으면 다시 닫는다
   $note; exit
 }
-Start-Process explorer.exe 'shell:AppsFolder\Microsoft.YourPhone_8wekyb3d8bbwe!App'
-$pl = $null
+$pl = $null; $had = $false
+foreach ($w in $AE::RootElement.FindAll($Scope::Children, $True_)) { if ($w.Current.Name -match '휴대폰과 연결|Phone Link') { $had = $true; break } }
+Start-Process explorer.exe 'shell:AppsFolder\Microsoft.YourPhone_8wekyb3d8bbwe!App'   # 작업 표시줄에 없어도 윈도우 앱 목록에서 켠다
 for ($i = 0; $i -lt 30 -and -not $pl; $i++) {
   Start-Sleep -Seconds 1
   foreach ($w in $AE::RootElement.FindAll($Scope::Children, $True_)) { if ($w.Current.Name -match '휴대폰과 연결|Phone Link') { $pl = $w; break } }
@@ -40,6 +43,8 @@ $cItem = New-Object System.Windows.Automation.PropertyCondition($AE::ClassNamePr
 $cList = New-Object System.Windows.Automation.PropertyCondition($AE::ControlTypeProperty, [System.Windows.Automation.ControlType]::List)
 $done = @{}; $read = 0; $ads = 0; $oldRun = 0; $t0 = Get-Date
 function SepDate($s) { if ($s -match '구분 기호, (\d{1,2})월 (\d{1,2}), (\d{4})') { return [datetime]::new([int]$Matches[3], [int]$Matches[1], [int]$Matches[2]) }; return $null }
+# 메시지 끝에 붙은 보낸 시각: "... 11 9, 2026 7:45 오후."
+function RowDate($s) { $m = [regex]::Matches($s, '(\d{1,2}) (\d{1,2}), (\d{4}) \d{1,2}:\d{2}'); if ($m.Count) { $x = $m[$m.Count - 1]; try { return [datetime]::new([int]$x.Groups[3].Value, [int]$x.Groups[1].Value, [int]$x.Groups[2].Value) } catch {} }; return $null }
 # 대화 안을 위로 올리며 기준 날짜까지 읽기
 function ReadBack($msgs) {
   $all = New-Object System.Collections.ArrayList; $have = @{}
@@ -47,7 +52,7 @@ function ReadBack($msgs) {
     $rows = @($msgs.FindAll($Scope::Descendants, $cItem) | ForEach-Object { (($_.Current.Name -replace '[\u200e\u200f]', '') -replace '\s+', ' ').Trim() } | Where-Object { $_ })
     $new = @($rows | Where-Object { -not $have.ContainsKey($_) }); foreach ($r in $new) { $have[$r] = 1 }
     if ($new.Count) { $all.InsertRange(0, [string[]]$new) }
-    $reached = $false; foreach ($r in $new) { $sd = SepDate $r; if ($sd -and $sd -lt $SinceDate) { $reached = $true } }
+    $reached = $false; foreach ($r in $new) { $sd = SepDate $r; if (-not $sd) { $sd = RowDate $r }; if ($sd -and $sd -lt $SinceDate) { $reached = $true } }
     $q = $null
     if ($reached -or -not $msgs.TryGetCurrentPattern([System.Windows.Automation.ScrollPattern]::Pattern, [ref]$q) -or -not $q.Current.VerticalScrollable -or $q.Current.VerticalScrollPercent -le 0) { break }
     $q.Scroll([System.Windows.Automation.ScrollAmount]::NoAmount, [System.Windows.Automation.ScrollAmount]::LargeDecrement); Start-Sleep -Milliseconds 700
@@ -65,9 +70,7 @@ for ($page = 0; $page -lt $maxPages -and -not $halt; $page++) {
     $full = $it.Current.Name; if (-not $full) { continue }
     $key = ($full -replace '\s+', ' '); if ($done.ContainsKey($key)) { continue }
     $done[$key] = 1; $fresh++
-    if (-not $SinceDate -and $full -notmatch '읽지 않은') { continue }
     if ($SinceDate -and ((Get-Date) - $t0).TotalMinutes -gt 25) { $halt = $true; break }
-    if ($full -match '\(광고\)') { $ads++; continue }
     $who = ($full -split '와의 대화|과의 대화')[0].Trim()
     if (-not (SelectIt $it)) { continue }
     Start-Sleep -Seconds 2
@@ -76,11 +79,11 @@ for ($page = 0; $page -lt $maxPages -and -not $halt; $page++) {
     if ($SinceDate) {
       if (-not $msgs) { continue }
       $rb = ReadBack $msgs
-      if ($rb.Old) { $oldRun++; if ($oldRun -ge 6) { $halt = $true; break }; continue }
+      $keep = @($rb.Rows | Where-Object { $d = RowDate $_; $d -and $d -ge $SinceDate })   # 기준 날짜 이후에 보낸 메시지만 남긴다
+      if (-not $keep.Count) { $oldRun++; if ($oldRun -ge 6) { $halt = $true; break }; continue }   # 목록은 최근순이라 옛 대화가 이어지면 그만 읽는다
       $oldRun = 0
-      if (-not @($rb.Rows).Count) { continue }
       [void]$sb.AppendLine("=== " + $who + " ===")
-      foreach ($r in $rb.Rows) { [void]$sb.AppendLine($r) }
+      foreach ($r in $keep) { [void]$sb.AppendLine($r) }
       [void]$sb.AppendLine(); $read++; continue
     }
     [void]$sb.AppendLine("=== " + $who + " ===")
@@ -98,4 +101,4 @@ for ($page = 0; $page -lt $maxPages -and -not $halt; $page++) {
     if ($SinceDate) { Start-Sleep -Seconds 1 }
   } else { break }
 }
-Finish "연결 상태: $state / 대화 $read 개 읽음$(if($SinceDate){" ($Since 이후 전체)"}else{" (안 읽은 대화)"}) / 광고 $ads 개 건너뜀 / 살펴본 대화 $($done.Count)개"
+Finish "연결 상태: $state / $Since 이후 문자가 있는 대화 $read 개 읽음 / 살펴본 대화 $($done.Count)개"

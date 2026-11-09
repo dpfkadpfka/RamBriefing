@@ -30,24 +30,46 @@ const today = () => ymd(new Date());
 const addDays = (s, n) => { const d = new Date(s + "T00:00:00"); d.setDate(d.getDate() + n); return ymd(d); };
 const sameDay = (ms, s) => ymd(new Date(ms)) === s;
 const dday = s => Math.round((new Date(s + "T00:00:00") - new Date(today() + "T00:00:00")) / 864e5);
-function findDue(text) {
-  const m = text.match(/(\d{1,2})\/(\d{1,2})/);
-  if (m) { const now = new Date(); const d = new Date(now.getFullYear(), +m[1] - 1, +m[2]); if (now - d > 180 * 864e5) d.setFullYear(d.getFullYear() + 1); return ymd(d); }
-  if (/오늘/.test(text)) return today();
-  if (/내일/.test(text)) return addDays(today(), 1);
-  if (/모레/.test(text)) return addDays(today(), 2);
+// 날짜: 받은 날 이후의 첫 날짜를 쓰고, 지난 날짜만 있으면 그중 가장 최근 날짜를 그대로 둔다(지난 일정 탭에 보인다). 링크 속 숫자는 날짜가 아니다.
+function findDue(text, base = today()) {
+  const clean = text.replace(/https?:\/\/\S+/g, " "), b = new Date(base + "T00:00:00");
+  let past = "";
+  for (const m of clean.matchAll(/(?<![\d/])(\d{1,2})\/(\d{1,2})(?![\d/])/g)) {
+    if (+m[1] < 1 || +m[1] > 12 || +m[2] < 1 || +m[2] > 31) continue;
+    const d = new Date(b.getFullYear(), +m[1] - 1, +m[2]);
+    if (b - d > 180 * 864e5) d.setFullYear(d.getFullYear() + 1);
+    if (ymd(d) >= base) return ymd(d);
+    if (ymd(d) > past) past = ymd(d);
+  }
+  if (past) return past;
+  if (/오늘/.test(clean)) return base;
+  if (/내일/.test(clean)) return addDays(base, 1);
+  if (/모레/.test(clean)) return addDays(base, 2);
   return "";
 }
+const mentionsDate = (text, day) => { const [, m, d] = day.split("-"); return new RegExp("(?<![\\d/])" + (+m) + "/" + (+d) + "(?![\\d/])").test(text); };
 const norm = s => s.replace(/[^가-힣A-Za-z0-9]/g, "").toLowerCase();
 function parse(text) {
-  const raw = String(text).replace(/`/g, "");
+  let raw = String(text).replace(/`/g, ""), from = "";
+  const fm = raw.match(/\s*\{\{(.*?)\}\}\s*$/s);   // 끝의 {{어디서 | 보낸 사람 | 받은 시각}}
+  let orig = "";
+  if (fm) {
+    const ps = fm[1].split("|").map(s => s.trim()).filter(Boolean), oi = ps.findIndex(s => /^원문\s*:/.test(s));
+    if (oi >= 0) orig = ps.splice(oi, 1)[0].replace(/^원문\s*:\s*/, "");
+    from = ps.join(" · "); raw = raw.slice(0, fm.index);
+  }
   const m = raw.match(/^\*\*(.+?):?\*\*:?\s*(.*)$/s);
   const it = m ? { title: m[1], body: m[2] } : { title: raw.replace(/\*\*/g, ""), body: "" };
+  it.from = from; it.orig = orig;
   const tag = it.title.match(/^\[([^\]]+)\]\s*(.+)$/);
   if (tag) { it.tag = tag[1]; it.title = tag[2]; }
   return it;
 }
-const P = Object.assign({ start: "today", view: "board", showDone: true }, store.get("rb.prefs", {}));
+const P = Object.assign({ start: "today", view: "board", showDone: true, showFrom: true, showNews: true, showSrc: true, src: "all" }, store.get("rb.prefs", {}));
+// 어디서 온 일인지 나누기: 메일, 문자, 카톡, 메신저(학교 메신저)
+const SRC = [["all", "전체"], ["mail", "메일"], ["sms", "문자"], ["kakao", "카톡"], ["msgr", "메신저"]];
+const srcOf = x => { const s = String(x.from || "").split(" · ")[0]; return /^메일/.test(s) ? "mail" : /^문자/.test(s) ? "sms" : /^카톡/.test(s) ? "kakao" : /쪽지|브리티|GOE|메신저/.test(s) ? "msgr" : ""; };
+const srcPass = x => !P.showSrc || P.src === "all" || srcOf(x) === P.src;
 if (P.start === "up") P.start = "today";
 let tasks = store.get("rb.tasks", {});
 // 바뀐 할 일에 시각을 찍어 두고, 구글 동기화 때 더 새것을 고른다
@@ -89,16 +111,23 @@ function ingestNews(d) {
   const sec = (d.summary || []).find(s => s.title.includes("소소한 소식"));
   for (const text of sec ? sec.items : []) {
     const it = parse(text), id = norm(it.title).slice(0, 40); if (!id) continue;
-    news[id] = { id, title: it.title, body: it.body, tag: NEWS_COLOR[it.tag] ? it.tag : "소식", date: d.date };
+    news[id] = { id, title: it.title, body: it.body, from: it.from, orig: it.orig, tag: NEWS_COLOR[it.tag] ? it.tag : "소식", date: d.date };
   }
 }
-const newsRows = () => Object.values(news).filter(n => !newsHidden[n.id]).filter(n => !query || (n.title + " " + n.body).toLowerCase().includes(query)).sort((a, b) => b.date.localeCompare(a.date));
+const newsRows = () => Object.values(news).filter(n => !newsHidden[n.id]).filter(srcPass).filter(n => !query || (n.title + " " + n.body).toLowerCase().includes(query)).sort((a, b) => b.date.localeCompare(a.date));
 const linkify = s => esc(s).replace(/https:\/\/[^\s<)]+/g, u => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`);
+// 원본 보기: 메일은 지메일로 연결하고, 나머지는 눌렀을 때 보관 파일에서 찾아 펼친다
+function origHtml(key) {
+  if (!key || !window.rb || !window.rb.getOriginal) return "";
+  const g = key.match(/^gmail:([A-Za-z0-9_-]+)$/);
+  if (g) return `<a class="btn orig-btn" href="https://mail.google.com/mail/u/0/#all/${g[1]}" target="_blank" rel="noopener">메일에서 보기</a>`;
+  return `<button class="btn orig-btn" data-orig="${esc(key)}" aria-expanded="false">원본 보기</button><div class="orig-box" hidden></div>`;
+}
 function renderNews(c) {
   const list = newsRows();
   if (!list.length) { c.innerHTML = `<div class="empty"><b>새 소식이 없습니다</b>이벤트, 꿀팁, 추천 자료, 방송 소식이 아침마다 여기에 모입니다</div>`; return; }
   const g = {}; for (const n of list) (g[n.date] = g[n.date] || []).push(n);
-  c.innerHTML = '<div class="listing">' + Object.entries(g).map(([day, xs]) => `<section><div class="col-h">${esc(dateName(day))} <em>${xs.length}건</em></div><div class="rows">` + xs.map(n => `<div class="row news" data-news-id="${esc(n.id)}"><span class="news-tag" style="--nc:${NEWS_COLOR[n.tag]}">${esc(n.tag)}</span><div><b>${esc(n.title)}</b>${n.body ? `<p>${linkify(n.body)}</p>` : ""}</div><div class="news-do"><button class="btn" data-news="task">할 일로</button><button class="btn" data-news="hide">지우기</button></div></div>`).join("") + "</div></section>").join("") + "</div>";
+  c.innerHTML = '<div class="listing">' + Object.entries(g).map(([day, xs]) => `<section><div class="col-h">${esc(dateName(day))} <em>${xs.length}건</em></div><div class="rows">` + xs.map(n => `<div class="row news" data-news-id="${esc(n.id)}"><span class="news-tag" style="--nc:${NEWS_COLOR[n.tag]}">${esc(n.tag)}</span><div><b>${esc(n.title)}</b>${n.body ? `<p>${linkify(n.body)}</p>` : ""}${n.from && P.showFrom ? `<small class="from">${esc(n.from)}</small>` : ""}${origHtml(n.orig)}</div><div class="news-do"><button class="btn" data-news="task">할 일로</button><button class="btn" data-news="hide">지우기</button></div></div>`).join("") + "</div></section>").join("") + "</div>";
 }
 
 function ingest(d) {
@@ -109,8 +138,17 @@ function ingest(d) {
     const it = parse(text), id = "b:" + norm(it.title).slice(0, 40); if (id === "b:") continue;
     const ex = tasks[id], t = it.title + " " + it.body;
     const topic = it.tag && TOPICS.some(x => x[0] === it.tag) ? it.tag : guessTopic(t);
-    if (!ex) tasks[id] = { id, title: it.title, body: it.body, topic, due: findDue(t), star: false, memo: "", source: "brief", created: d.date };
-    else if (!ex.edited) { ex.body = it.body; ex.topic = topic; ex.due = findDue(t) || ex.due; }
+    if (!ex) tasks[id] = { id, title: it.title, body: it.body, from: it.from, orig: it.orig, topic, due: findDue(t, d.date), star: false, memo: "", source: "brief", created: d.date };
+    else {
+      if (it.from) ex.from = it.from;
+      if (it.orig) ex.orig = it.orig;
+      if (!ex.edited) {
+        ex.body = it.body; ex.topic = topic;
+        const nd = findDue(t, d.date);
+        if (nd) ex.due = nd;
+        else if (ex.due && !mentionsDate(t, ex.due)) ex.due = "";   // 글에 없는 날짜(예전 표기에서 잘못 잡힌 것)만 지운다
+      }
+    }
   }
 }
 function migrate() {  // 이전 화면에서 완료·삭제한 내용 옮기기
@@ -125,10 +163,11 @@ const matches = t => !query || (t.title + " " + t.body + " " + (t.memo || "")).t
 function pageRows() {
   const td = today();
   let rows = live().filter(t => isOpen(t) || (P.showDone && doneToday(t)));
-  if (page === "today") rows = rows.filter(t => t.due && t.due <= td);
+  if (page === "today") rows = rows.filter(t => t.due === td);
+  else if (page === "past") rows = rows.filter(t => t.due && t.due < td);
   else if (page === "none") rows = rows.filter(t => !t.due);
   else if (page.startsWith("d:")) rows = rows.filter(t => t.due === page.slice(2));
-  return rows.filter(matches);
+  return rows.filter(matches).filter(srcPass);
 }
 const order = (a, b) => (a.doneAt ? 1 : 0) - (b.doneAt ? 1 : 0) || (b.star ? 1 : 0) - (a.star ? 1 : 0) || (a.due || "9").localeCompare(b.due || "9");
 const groups = rows => TOPICS.map(t => ({ name: t[0], color: t[1], rows: rows.filter(x => x.topic === t[0]) }));
@@ -154,15 +193,22 @@ function taskHtml(t) {
   return `<article class="task${t.doneAt ? " done" : ""}" style="--tc:${topicColor(t.topic)}" data-id="${esc(t.id)}">
     <button class="tick" data-do="toggle" aria-label="${t.doneAt ? "완료 취소" : "완료"}: ${esc(t.title)}" title="${t.doneAt ? "완료 취소" : "완료"}">${I.check}</button>
     <div class="t-main" data-do="open">
-      <h3>${esc(t.title)}</h3>${t.body ? `<p class="desc">${esc(t.body)}</p>` : ""}
+      <h3>${esc(t.title)}</h3>${t.body ? `<p class="desc">${esc(t.body)}</p>` : ""}${t.from && P.showFrom ? `<small class="from">${esc(t.from)}</small>` : ""}
       <div class="meta">${dueHtml(t)}<span class="topic"><i style="background:${topicColor(t.topic)}"></i>${esc(t.topic)}</span>${t.doneAt ? "" : `<a class="cal" href="${esc(calUrl(t))}" target="_blank" rel="noopener" data-cal>캘린더 등록</a>`}</div>
     </div>
     <button class="star${t.star ? " on" : ""}" data-do="star" aria-label="중요 표시" aria-pressed="${!!t.star}" title="중요">${I.star}</button>
+    <button class="del" data-do="del" aria-label="삭제: ${esc(t.title)}" title="삭제">${I.trash}</button>
   </article>`;
 }
 function emptyHtml() {
   if (query) return '<div class="empty"><b>찾는 할 일이 없습니다</b></div>';
-  if (page === "today") return '<div class="empty"><b>오늘 할 일을 모두 끝냈습니다</b>내일 아침 새 할 일이 올라옵니다</div>';
+  if (page === "today") {
+    const run = window.rb && window.rb.runNow ? '<div><button class="btn main" data-run>지금 정리</button></div>' : "";
+    if (!latest) return `<div class="empty"><b>아직 정리한 내용이 없습니다</b>지금 정리를 누르거나 아침 정리가 끝나면 여기에 할 일이 올라옵니다${run}</div>`;
+    if (live().some(doneToday)) return '<div class="empty"><b>오늘 할 일을 모두 끝냈습니다</b>내일 아침 새 할 일이 올라옵니다</div>';
+    return `<div class="empty"><b>오늘 할 일이 없습니다</b>새 소식을 확인하려면 지금 정리를 눌러 보세요${run}</div>`;
+  }
+  if (page === "past") return '<div class="empty"><b>지난 일정이 없습니다</b>날짜가 지났는데 끝내지 않은 일이 여기에 모입니다</div>';
   return '<div class="empty"><b>할 일이 없습니다</b></div>';
 }
 function renderContent() {
@@ -194,17 +240,18 @@ const dateName = s => { const d = new Date(s + "T00:00:00"); return `${d.getMont
 function renderNav() {
   const td = today(), openRows = live().filter(isOpen);
   const item = (id, name, icon, n) => `<button class="nav-it" data-page="${id}"${page === id ? ' aria-current="page"' : ""}><span class="ic">${icon}</span><span class="n">${name}</span><em>${n || ""}</em></button>`;
-  const late = openRows.filter(t => t.due && t.due <= td).length;
-  $("menu").innerHTML = item("today", "오늘", I.today, late) + item("all", "전체", I.all, openRows.length) + item("news", "소소한 소식", I.star, Object.values(news).filter(n => !newsHidden[n.id]).length);
+  const late = openRows.filter(t => t.due === td).length;
+  if (page === "news" && !P.showNews) page = "today";
+  $("menu").innerHTML = item("today", "오늘", I.today, late) + item("all", "전체", I.all, openRows.length) + (P.showNews ? item("news", "소소한 소식", I.star, Object.values(news).filter(n => !newsHidden[n.id]).length) : "");
   const dates = {}; for (const t of openRows) if (t.due && t.due > td) dates[t.due] = (dates[t.due] || 0) + 1;
   const list = Object.keys(dates).sort();
   if (page.startsWith("d:") && !dates[page.slice(2)]) page = "today";
   const tag = s => { const n = dday(s); return n === 1 ? " · 내일" : n === 2 ? " · 모레" : ""; };
-  $("topics").innerHTML = list.map(s => item("d:" + s, dateName(s) + tag(s), I.up, dates[s])).join("") + item("none", "날짜 없음", I.none, openRows.filter(t => !t.due).length);
+  $("topics").innerHTML = item("past", "지난 일정", I.log, openRows.filter(t => t.due && t.due < td).length) + list.map(s => item("d:" + s, dateName(s) + tag(s), I.up, dates[s])).join("") + item("none", "날짜 없음", I.none, openRows.filter(t => !t.due).length);
   $("menu2").innerHTML = item("log", "기록", I.log, live().filter(t => t.doneAt && !doneToday(t)).length) + item("trash", "휴지통", I.trash, Object.values(tasks).filter(t => t.delAt).length);
 }
 function renderHead() {
-  const names = { today: "오늘", all: "전체", none: "날짜 없음", news: "소소한 소식", log: "기록", trash: "휴지통" };
+  const names = { today: "오늘", all: "전체", past: "지난 일정", none: "날짜 없음", news: "소소한 소식", log: "기록", trash: "휴지통" };
   $("title").textContent = names[page] || dateName(page.slice(2));
   const isTask = page !== "log" && page !== "trash" && page !== "news";
   const finished = live().filter(doneToday).length;
@@ -235,7 +282,14 @@ function renderHead() {
   const on = (id, v) => $(id).setAttribute("aria-pressed", v);
   on("vBoard", P.view === "board"); on("vList", P.view === "list");
 }
-function render() { saveAll(); renderNav(); renderHead(); renderContent(); if (open) renderDrawer(); }
+function renderSrc() {
+  const bar = $("srcBar"), on = P.showSrc && page !== "log" && page !== "trash"; bar.hidden = !on; if (!on) return;
+  const saved = P.src; P.src = "all";
+  const base = page === "news" ? newsRows() : pageRows().filter(isOpen);
+  P.src = saved;
+  bar.innerHTML = SRC.map(([k, n]) => { const c = k === "all" ? base.length : base.filter(x => srcOf(x) === k).length; return `<button data-src-f="${k}" aria-pressed="${P.src === k}">${n}<em>${c}</em></button>`; }).join("");
+}
+function render() { saveAll(); renderNav(); renderSrc(); renderHead(); renderContent(); if (open) renderDrawer(); }
 
 function notice(d) {
   const sec = k => (d.summary || []).find(s => s.title.includes(k));
@@ -248,7 +302,7 @@ function notice(d) {
   if ((!added.length && !seen.length && !fail.length && !rooms.length && !needLogin) || store.get(id, false)) { $("note").hidden = true; return; }
   const chips = [];
   if (added.length) chips.push(`<span class="stat new">새 일정 <b>${added.length}</b></span>`);
-  for (const s of seen) { const m = s.match(/^(메일|문자|카톡)\D*(\d+)/); if (m) chips.push(`<span class="stat">${m[1]} <b>${m[2]}</b></span>`); }
+  for (const s of seen) { const m = s.match(/^(메일|문자|카톡|학교 메신저)\D*(\d+)/); if (m) chips.push(`<span class="stat">${m[1]} <b>${m[2]}</b></span>`); }
   if (needLogin) chips.push('<span class="stat warn">카톡 로그인 필요</span>');
   if (rooms.length) chips.push(`<span class="stat warn">저장 실패 <b>${rooms.length}</b></span>`);
   $("stats").innerHTML = chips.join("");
@@ -262,7 +316,7 @@ function notice(d) {
   $("note").hidden = false;
   $("noteX").onclick = () => { store.set(id, true); $("note").hidden = true; };
   const rb = $("noteRetry"); rb.hidden = !((rooms.length || needLogin) && window.rb && window.rb.retry);
-  rb.onclick = async () => { rb.disabled = true; rb.textContent = "다시 정리하는 중…"; const r = await window.rb.retry(); if (!r.ok) { toast(r.error); rb.disabled = false; rb.textContent = "다시 시도"; } else toast("다시 정리합니다. 끝나면 화면이 새로 고쳐집니다"); };
+  rb.onclick = async () => { rb.disabled = true; rb.textContent = "다시 정리하는 중…"; const r = await window.rb.retry(); if (!r.ok) { toast(r.error); rb.disabled = false; rb.textContent = "다시 시도"; } else { toast("다시 정리합니다. 끝나면 화면이 새로 고쳐집니다"); watchRun(); } };
 }
 function renderDrawer() {
   const t = tasks[open]; if (!t) { closeDrawer(); return; }
@@ -272,6 +326,7 @@ function renderDrawer() {
   <div class="d-b">
     <label class="field"><span>제목</span><input class="d-title" data-f="title" value="${esc(t.title)}"></label>
     <label class="field"><span>내용</span><textarea rows="4" data-f="body">${esc(t.body)}</textarea></label>
+    ${t.from ? `<div class="field"><span>어디서 왔나요</span><div class="from-line">${esc(t.from)}</div>${origHtml(t.orig)}</div>` : ""}
     <div class="two"><label class="field"><span>날짜</span><input type="date" data-f="due" value="${esc(t.due)}"></label>
     <label class="field"><span>주제</span><select data-f="topic">${TOPICS.map(x => `<option${x[0] === t.topic ? " selected" : ""}>${x[0]}</option>`).join("")}</select></label></div>
     <div class="quick"><button class="btn" data-act="d0">오늘로</button><button class="btn" data-act="d1">내일로</button><button class="btn" data-act="d7">다음 주로</button><button class="btn" data-act="dx">날짜 없음</button></div>
@@ -287,7 +342,20 @@ function toast(msg, fn) {
 }
 $("toastBtn").onclick = () => { if (toastFn) toastFn(); $("toast").hidden = true; };
 function remove(id) { const t = tasks[id]; t.delAt = Date.now(); closeDrawer(); render(); toast("휴지통으로 옮겼습니다", () => { delete t.delAt; render(); }); }
-document.addEventListener("click", e => {
+document.addEventListener("click", async e => {
+  const og = e.target.closest("[data-orig]");
+  if (og) {
+    const box = og.nextElementSibling;
+    if (!box.hidden) { box.hidden = true; og.textContent = "원본 보기"; og.setAttribute("aria-expanded", "false"); return; }
+    og.disabled = true;
+    const r = await window.rb.getOriginal(og.dataset.orig);
+    og.disabled = false;
+    box.innerHTML = r.ok && r.value.found ? `<b>${esc(r.value.title)}</b><p>${linkify(r.value.text)}</p>` : "<p>이 컴퓨터에서 원본을 찾지 못했어요. 보관 30일이 지났거나 다른 컴퓨터에서 정리한 내용일 수 있어요.</p>";
+    box.hidden = false; og.textContent = "원본 접기"; og.setAttribute("aria-expanded", "true");
+    return;
+  }
+  const sf = e.target.closest("[data-src-f]");
+  if (sf) { P.src = sf.dataset.srcF; savePrefs(); render(); return; }
   const cal = e.target.closest("[data-cal]");
   if (cal) {
     const host = cal.closest("[data-id]"), t = tasks[host ? host.dataset.id : open];
@@ -299,11 +367,12 @@ document.addEventListener("click", e => {
   const nb = e.target.closest("[data-news]");
   if (nb) {
     const n = news[nb.closest("[data-news-id]").dataset.newsId];
-    if (nb.dataset.news === "task") { const id = "m:" + Date.now(); tasks[id] = { id, title: n.title, body: n.body, topic: guessTopic(n.title + " " + n.body), due: findDue(n.title + " " + n.body), star: false, memo: "", source: "me", created: today(), edited: true }; toast("할 일에 넣었습니다"); }
+    if (nb.dataset.news === "task") { const id = "m:" + Date.now(); tasks[id] = { id, title: n.title, body: n.body, from: n.from, orig: n.orig, topic: guessTopic(n.title + " " + n.body), due: findDue(n.title + " " + n.body), star: false, memo: "", source: "me", created: today(), edited: true }; toast("할 일에 넣었습니다"); }
     newsHidden[n.id] = 1; store.set("rb.news.hidden", newsHidden); render(); return;
   }
   const b = e.target.closest("[data-do]"); if (!b) return;
   const id = b.closest("[data-id]").dataset.id, t = tasks[id], act = b.dataset.do;
+  if (act === "del") return remove(id);
   if (act === "toggle") { t.doneAt = t.doneAt ? 0 : Date.now(); if (!t.doneAt) delete t.doneAt; }
   if (act === "star") t.star = !t.star;
   if (act === "restore") delete t.delAt;
@@ -363,6 +432,10 @@ function tabGeneral(el) {
   <div class="opt"><div>처음 여는 화면</div>${sel("start", [["today", "오늘"], ["all", "전체"]])}</div>
   <div class="opt"><div>기본 보기</div>${sel("view", [["board", "보드 (옆으로 넘기기)"], ["list", "목록"]])}</div>
   <div class="opt"><div>오늘 완료한 일 보이기<small>끄면 체크하는 즉시 목록에서 숨깁니다. 다음 날 기록으로 넘어갑니다.</small></div><input type="checkbox" data-c="showDone"${P.showDone ? " checked" : ""} aria-label="오늘 완료한 일 보이기"></div>
+  <div class="opt"><div>메일·문자·카톡·메신저로 나눠 보기<small>할 일과 소식 위에 구분 버튼을 보여 줍니다.</small></div><input type="checkbox" data-c="showSrc"${P.showSrc ? " checked" : ""} aria-label="나눠 보기 버튼 보이기"></div>
+  <div class="opt"><div>출처 보이기<small>카드에 어디서, 누가, 언제 보냈는지 함께 보여 줍니다.</small></div><input type="checkbox" data-c="showFrom"${P.showFrom ? " checked" : ""} aria-label="출처 보이기"></div>
+  <div class="opt"><div>소소한 소식 메뉴 보이기<small>이벤트, 꿀팁, 추천 자료를 모아 보는 메뉴입니다.</small></div><input type="checkbox" data-c="showNews"${P.showNews ? " checked" : ""} aria-label="소소한 소식 메뉴 보이기"></div>
+  <div class="opt"><div>아침 정리에서 할 일<small>캘린더 입력, 카톡 보고, 알림은 설정의 컴퓨터 탭에서 고릅니다.</small></div></div>
   <div class="opt"><div>단축키<small>N 할 일 추가 · / 찾기 · Esc 닫기</small></div></div>
   <div class="opt" style="display:block;padding:14px 0"><div>앱 아이콘<small>바탕화면·시작 메뉴·작업 표시줄 아이콘도 함께 바뀝니다</small></div><div class="icon-pick" id="iconPick">${[1, 2, 3, 4, 5].map(n => `<button data-icon="${n}" aria-label="아이콘 ${n}"><img src="icons/icon-${n}.png" alt=""></button>`).join("")}</div></div>`;
   el.onchange = e => { const t = e.target; if (t.dataset.p) setP(t.dataset.p, t.value); if (t.dataset.c) setP(t.dataset.c, t.checked); };
@@ -438,18 +511,20 @@ async function tabPc(el, first) {
   const env = b.ok ? b.value : { pc: "" };
   const s = Object.assign({ role: "this", sources: env.claude === "ok" ? ["kakao", "sms", "mail"] : ["kakao", "sms"], time: "06:00", engine: env.claude === "ok" ? "claude" : "gemini" }, a.ok ? a.value : {});
   const LINE = (ok, name, msg) => '<div class="chk-row"><i class="' + (ok ? "ok" : "no") + '">' + (ok ? "✓" : "!") + "</i><div><b>" + esc(name) + "</b><small>" + esc(msg) + "</small></div></div>";
-  const kakaoMsg = { ok: ["카톡 PC 로그인됨", 1], login: ["로그인되어 있지 않아요. 아침에 로그아웃 상태면 카톡만 건너뛰고 나머지를 정리해요", 0], off: ["꺼져 있어요. 아침에 자동으로 켜 보지만, 로그인이 풀려 있으면 건너뛰어요", 0], none: ["이 컴퓨터에 카카오톡 PC가 없어요", 0] }[env.kakao] || ["확인하지 못했어요", 0];
+  const kakaoMsg = { ok: ["카톡 PC 로그인됨", 1], login: ["로그인되어 있지 않아요. 아침에 로그아웃 상태면 카톡만 건너뛰고 나머지를 정리해요", 0], off: ["꺼져 있어도 아침에 자동으로 켜요. 자동 로그인을 켜 두세요. 다른 컴퓨터에 로그인돼 있으면 이 컴퓨터로 가져와요(그 컴퓨터 카톡은 로그아웃돼요)", 1], none: ["이 컴퓨터에 카카오톡 PC가 없어요", 0] }[env.kakao] || ["확인하지 못했어요", 0];
   const checks = env.auto ? LINE(kakaoMsg[1], "카카오톡", kakaoMsg[0]) + LINE(env.phone === "ok", "휴대폰과 연결", env.phone === "ok" ? "설치됨. 휴대폰 연결은 아침에 다시 확인해요" : "설치되어 있지 않아요") + '<div id="aiCheck"></div>' : '<p class="dz-hint">아침 정리 파일을 찾지 못했습니다. 다시 설치해 주세요.</p>';
   const moved = reportPc && reportPc !== env.pc ? '<div class="move-note" id="moveNote"><b>지금 보고 컴퓨터는 ' + esc(reportPc) + '예요.</b><br>여기로 옮기면 ' + esc(reportPc) + '의 예약은 그 컴퓨터에서 앱을 켤 때 꺼져요. 카톡 PC 로그인은 한 대만 되니, 여기서 카톡에 로그인하면 ' + esc(reportPc) + '의 카톡은 로그아웃돼요.</div>' : "";
   const R = (v, t, d) => '<label class="role-card"><input type="radio" name="pcRole" value="' + v + '"' + (s.role === v ? " checked" : "") + "><span><b>" + t + "</b><small>" + d + "</small></span></label>";
   const C = (v, t) => '<label class="src-chip"><input type="checkbox" data-src="' + v + '"' + (s.sources.includes(v) ? " checked" : "") + "><span>" + t + "</span></label>";
+  const so = s.opts || {}, OPT = (v, t) => '<label class="src-chip"><input type="checkbox" data-opt="' + v + '"' + (so[v] !== false ? " checked" : "") + "><span>" + t + "</span></label>";
   el.innerHTML = "<h3>" + (first ? "처음 설정" : "컴퓨터") + '</h3><p class="dz-hint">지금 컴퓨터: <b>' + esc(env.pc || "알 수 없음") + "</b></p>"
     + '<div class="set-q">아침 보고를 받을 컴퓨터가 지금 이 컴퓨터인가요?</div><div class="role-list">'
     + R("this", "네, 이 컴퓨터예요", "이 컴퓨터에 아침 예약을 걸어요. 그 시각에 꺼져 있으면 다음에 켤 때 바로 실행해요.")
     + R("other", "아니요, 다른 컴퓨터예요", "이 컴퓨터에서는 예약을 끄고 할 일만 봐요.")
     + R("later", "아직 모르겠어요", "할 일 앱으로만 써요. 여기서 나중에 바꿀 수 있어요.") + "</div>" + moved
-    + '<div id="pcThis"><div class="set-q">무엇을 읽을까요?</div><div class="src-list">' + C("kakao", "카톡") + C("sms", "휴대폰 문자") + C("mail", "메일") + "</div>"
-    + '<div class="set-q">몇 시에 받을까요?</div><input type="time" id="pcTime" class="pc-time" value="' + esc(s.time) + '" aria-label="받을 시각"><p class="dz-hint" style="margin-top:6px">카톡은 50분 전, 문자는 10분 전부터 미리 읽어요.</p>'
+    + '<div id="pcThis"><div class="set-q">무엇을 읽을까요?</div><div class="src-list">' + C("kakao", "카톡") + C("sms", "휴대폰 문자") + C("mail", "메일") + (env.school === "ok" ? C("school", "학교 메신저") : "") + "</div>" + (env.school === "ok" ? '<p class="dz-hint" style="margin-top:6px">학교 메신저는 브리티·GOE의 어제·오늘 쪽지를 열어 읽어요. 쪽지는 읽음으로 바뀌고, 내용은 정리를 위해 Claude로 보내져요. 제미나이로 정리할 때는 읽지 않아요.</p>' : "")
+    + '<div class="set-q">아침 정리 때 무엇을 할까요?</div><div class="src-list">' + OPT("news", "소소한 소식도 고르기") + OPT("notify", "윈도우 알림") + (env.claude === "ok" ? OPT("autoCal", "캘린더에 일정 넣기") + OPT("report", "카톡으로 보고 보내기") : "") + "</div>"
+    + '<div class="set-q">몇 시에 받을까요?</div><input type="time" id="pcTime" class="pc-time" value="' + esc(s.time) + '" aria-label="받을 시각"><p class="dz-hint" style="margin-top:6px">카톡은 50분 전, 문자는 30분 전, 학교 메신저는 20분 전부터 미리 읽어요.</p>'
     + '<div class="set-q">무엇으로 정리할까요?</div><div class="role-list">'
     + '<label class="role-card"><input type="radio" name="pcAi" value="gemini"' + (s.engine === "gemini" ? " checked" : "") + '><span><b>무료 제미나이</b><small>구글 AI Studio에서 받은 무료 키를 넣어요. 메일은 읽지 않고, 일정은 할 일에서 눌러 넣어요.</small></span></label>'
     + (env.claude === "ok" ? '<label class="role-card"><input type="radio" name="pcAi" value="claude"' + (s.engine === "claude" ? " checked" : "") + '><span><b>Claude 구독</b><small>메일까지 읽고 일정을 캘린더에 바로 넣어요.</small></span></label>' : "") + "</div>"
@@ -461,7 +536,7 @@ async function tabPc(el, first) {
     const role = el.querySelector('input[name="pcRole"]:checked').value, ai = el.querySelector('input[name="pcAi"]:checked').value;
     $("pcThis").hidden = role !== "this"; if ($("moveNote")) $("moveNote").hidden = role !== "this";
     $("aiKey").hidden = ai !== "gemini";
-    const m = el.querySelector('[data-src="mail"]'); m.disabled = ai === "gemini"; if (ai === "gemini") m.checked = false;
+    for (const k of ["mail", "school"]) { const m = el.querySelector('[data-src="' + k + '"]'); if (m) { m.disabled = ai === "gemini"; if (ai === "gemini") m.checked = false; } }
     if ($("aiCheck")) $("aiCheck").innerHTML = ai === "gemini" ? LINE(hasKey, "무료 제미나이", hasKey ? "키 저장됨" : "키를 넣어 주세요") : LINE(true, "Claude", "설치됨");
   };
   sync(); el.onchange = sync; requestAnimationFrame(() => { el.closest(".m-main").scrollTop = 0; });
@@ -470,7 +545,7 @@ async function tabPc(el, first) {
     if (x.dataset.pc === "check") return tabPc(el, first);
     if (x.dataset.pc === "key") { const i = $("geminiIn"); x.disabled = true; x.textContent = "확인하는 중…"; const k = await window.rb.setGemini(i.value); i.value = ""; x.disabled = false; x.textContent = "확인 후 저장"; if (k.ok) { hasKey = true; sync(); toast("제미나이 키를 저장했습니다"); } else toast(k.error); return; }
     x.disabled = true; x.textContent = "적용하는 중…";
-    const r = await window.rb.saveSetup({ role: el.querySelector('input[name="pcRole"]:checked').value, sources: [...el.querySelectorAll("[data-src]:checked")].map(i => i.dataset.src), time: $("pcTime").value, engine: el.querySelector('input[name="pcAi"]:checked').value });
+    const r = await window.rb.saveSetup({ role: el.querySelector('input[name="pcRole"]:checked').value, sources: [...el.querySelectorAll("[data-src]:checked")].map(i => i.dataset.src), time: $("pcTime").value, engine: el.querySelector('input[name="pcAi"]:checked').value, opts: Object.fromEntries([...el.querySelectorAll("[data-opt]")].map(i => [i.dataset.opt, i.checked])) });
     x.disabled = false; x.textContent = "저장";
     if (!r.ok) { toast(r.error); return; }
     showRole(r.value); toast("저장했습니다"); if (first) closeSettings();
@@ -505,6 +580,32 @@ $("settingsBack").addEventListener("mousedown", e => { if (e.target.id === "sett
 })();
 document.querySelector(".m-side").addEventListener("click", e => { const b = e.target.closest("[data-tab]"); if (b) setTab(b.dataset.tab); });
 
+// 지금 정리: 실수로 눌러 카톡 창이 움직이지 않게 한 번 더 눌러야 시작한다
+let runArmed = 0, runPoll = null, runInfo = { running: false, step: "" }, runDis = null;
+function showRun() {
+  const armed = Date.now() - runArmed < 6000;
+  document.querySelectorAll("[data-run]").forEach(b => { b.disabled = runInfo.running; b.textContent = runInfo.running ? (runInfo.step || "정리하는 중") + "…" : armed ? "한 번 더 누르기" : "지금 정리"; });
+}
+async function watchRun() {
+  const r = await window.rb.runState(); if (!r.ok) return;
+  runInfo = r.value; showRun();
+  if (runInfo.running && !runPoll) runPoll = setInterval(watchRun, 3000);
+  if (!runInfo.running && runPoll) { clearInterval(runPoll); runPoll = null; }
+}
+document.addEventListener("click", async e => {
+  if (!e.target.closest("[data-run]") || !window.rb) return;
+  const su = await window.rb.getSetup();
+  if (!su.ok || !su.value.done || su.value.role !== "this") { $("settingsBack").hidden = false; setTab("pc"); toast("이 컴퓨터를 보고받을 컴퓨터로 정하고 저장하면 시작할 수 있어요"); return; }
+  if (Date.now() - runArmed > 6000) {
+    runArmed = Date.now(); showRun(); clearTimeout(runDis); runDis = setTimeout(showRun, 6100);
+    toast("카톡과 문자 창이 잠시 열렸다 닫히고 몇 분에서 수십 분 걸려요. 한 번 더 누르면 시작합니다"); return;
+  }
+  runArmed = 0; const r = await window.rb.runNow();
+  if (!r.ok) { toast(r.error); showRun(); return; }
+  toast("정리를 시작했습니다. 끝나면 화면이 새로 고쳐집니다"); watchRun();
+});
+if (window.rb && window.rb.runNow) { $("runNow").hidden = false; new MutationObserver(showRun).observe($("content"), { childList: true }); watchRun(); }
+
 // 시작
 $("gear").innerHTML = I.gear; $("plus").innerHTML = I.plus; $("noteX").innerHTML = I.x; $("settingsX").innerHTML = I.x;
 const loadDay = day => new Promise(ok => {
@@ -522,7 +623,7 @@ const loadDay = day => new Promise(ok => {
   const hash = location.hash.slice(1);
   if (hash === "all") { page = "all"; render(); }
   if (hash === "news") { page = "news"; render(); }
-  if (window.rb && window.rb.getSetup) { const su = await window.rb.getSetup(); if (su.ok) { showRole(su.value); if (!su.value.done && !hash.startsWith("set-")) { $("settingsBack").hidden = false; document.querySelectorAll(".m-side [data-tab]").forEach(b => b.setAttribute("aria-current", b.dataset.tab === "pc")); tabPc($("settingsBody"), true); } } }
+  if (window.rb && window.rb.getSetup) { const su = await window.rb.getSetup(); if (su.ok) { showRole(su.value); if (!su.value.done && !hash.startsWith("set-") && !store.get("rb.setup.seen", false)) { store.set("rb.setup.seen", true); $("settingsBack").hidden = false; document.querySelectorAll(".m-side [data-tab]").forEach(b => b.setAttribute("aria-current", b.dataset.tab === "pc")); tabPc($("settingsBody"), true); } } }
   if (hash.startsWith("set-")) { $("settingsBack").hidden = false; setTab(hash.slice(4)); }
   syncNow(); setInterval(() => syncNow(), 10 * 60000); window.addEventListener("focus", () => syncNow());
   // 자정이 지나면 완료한 일이 기록으로 넘어가도록 다시 그린다

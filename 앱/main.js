@@ -132,17 +132,23 @@ function syncShortcuts(n) {
       try {
         const l = shell.readShortcutLink(p);
         const mine = path.resolve(l.target || "").toLowerCase() === path.resolve(process.execPath).toLowerCase() && (app.isPackaged || (l.args || "").toLowerCase().includes(path.resolve(__dirname).toLowerCase()));
-        if (mine && (l.icon || "").toLowerCase() !== iconPath(n).toLowerCase()) { shell.writeShortcutLink(p, "update", { icon: iconPath(n), iconIndex: 0, appUserModelId: AUMID }); changed++; }
+        if (mine && ((l.icon || "").toLowerCase() !== iconPath(n).toLowerCase() || l.appUserModelId !== AUMID)) { shell.writeShortcutLink(p, "update", { icon: iconPath(n), iconIndex: 0, appUserModelId: AUMID }); changed++; }
       } catch {}
     }
   }
   if (changed) require("child_process").execFile("ie4uinit.exe", ["-show"], () => {});   // 아이콘 캐시 새로 고침
   return changed;
 }
+// 작업 표시줄이 실행 파일의 기본 아이콘 대신 앱 아이콘을 쓰도록 창에 직접 알려 준다
+function applyIcon(n) {
+  if (!win) return;
+  win.setIcon(iconPath(n));
+  if (process.platform === "win32") win.setAppDetails({ appId: AUMID, appIconPath: iconPath(n), appIconIndex: 0, relaunchCommand: '"' + process.execPath + '"' + (app.isPackaged ? "" : ' "' + __dirname + '"'), relaunchDisplayName: "RamBriefing" });
+}
 function setIcon(n) {
   n = Math.round(+n); if (!(n >= 1 && n <= ICONS)) throw new Error("없는 아이콘입니다");
   fs.writeFileSync(iconCfg(), JSON.stringify({ n }));
-  if (win) win.setIcon(iconPath(n));
+  applyIcon(n);
   return { n, shortcuts: syncShortcuts(n) };
 }
 // 처음 설정: 아침 보고를 받을 컴퓨터, 읽을 자료, 시각, AI. 예약은 이 PC에만 걸린다.
@@ -162,7 +168,7 @@ const writeSetup = v => fs.writeFileSync(setupFile(), JSON.stringify(v));
 async function checkEnv() { if (!hasAuto()) return { pc: PC, auto: false }; return { ...JSON.parse(await runPs("준비점검.ps1")), auto: true, gemini: !!savedGemini() }; }
 async function saveSetup(s) {
   const role = ["this", "other", "later"].includes(s.role) ? s.role : "later";
-  const sources = (s.sources || []).filter(x => ["kakao", "sms", "mail"].includes(x));
+  const sources = (s.sources || []).filter(x => ["kakao", "sms", "mail", "school"].includes(x));
   const time = /^([01]\d|2[0-3]):[0-5]\d$/.test(s.time) ? s.time : "06:00";
   const engine = s.engine === "claude" ? "claude" : "gemini";
   if (hasAuto()) {
@@ -173,8 +179,10 @@ async function saveSetup(s) {
       await runPs("예약설정.ps1", ["-Time", time, "-Sources", sources.join(","), "-Engine", engine, "-AppExe", process.execPath, "-AppArgs", appArgs]);
     } else await runPs("예약설정.ps1", ["-Off"]);
   }
-  const v = { done: true, role, sources, time, engine, pc: PC, at: Date.now() };
+  const o = s.opts || {}, opts = { autoCal: o.autoCal !== false, report: o.report !== false, notify: o.notify !== false, news: o.news !== false };
+  const v = { done: true, role, sources, time, engine, opts, pc: PC, at: Date.now() };
   writeSetup(v);
+  if (hasAuto() && role === "this") { fs.mkdirSync(baseDir(), { recursive: true }); fs.writeFileSync(cfgFile(), JSON.stringify({ ...readCfg(), ...opts })); }   // 아침 정리 스크립트가 읽는다
   if (role === "this" && loadRefresh()) syncDoc({ reportPc: PC, reportAt: v.at }).catch(() => {});
   return v;
 }
@@ -209,20 +217,55 @@ async function geminiBrief(cfg) {
   const src = cfg.sources || [], parts = [];
   if (src.includes("sms")) parts.push("[휴대폰 문자]\n" + (readText(path.join(workDir(), "휴대폰메시지.txt")) || "자료 없음"));
   if (src.includes("kakao")) parts.push("[카카오톡]\n" + (readText(path.join(workDir(), "카카오톡_최근대화.txt")) || "자료 없음").slice(-900000));
-  writeResult("성공", await geminiCall(key, readText(path.join(autoDir(), "제미나이_지시.md")) + "\n\n오늘: " + new Date().toLocaleDateString("ko-KR") + "\n\n<자료>\n" + parts.join("\n\n") + "\n</자료>"));
+  const noNews = cfg.news === false ? "소소한 소식은 고르지 말고 제목 아래를 비워 둡니다.\n\n" : "";
+  writeResult("성공", await geminiCall(key, noNews + readText(path.join(autoDir(), "제미나이_지시.md")) + "\n\n오늘: " + new Date().toLocaleDateString("ko-KR") + "\n\n<자료>\n" + parts.join("\n\n") + "\n</자료>"));
 }
 function briefings() {
   let names = []; try { names = fs.readdirSync(dataDir()).filter(f => /^20.*\.js$/.test(f)).sort(); } catch {}
   return names.map(f => { try { return JSON.parse(readText(path.join(dataDir(), f)).replace(/^window\.RAM_DATA=/, "").replace(/;\s*$/, "")); } catch { return null; } }).filter(Boolean);
 }
 function notifyBrief(d, err) {
-  if (!Notification.isSupported()) return;
+  if (!Notification.isSupported() || (getSetup().opts || {}).notify === false) return;
   const sec = k => ((d && d.summary) || []).find(s => s.title.includes(k)), n = k => (sec(k) || { items: [] }).items.length;
-  const kakao = ((d && d.failed) || []).some(f => /로그인|채팅 목록|켜져 있지 않/.test(f.msg || ""));
-  const body = err ? "정리하지 못했어요: " + err : "할 일 " + n("확인 필요") + "건 · 소소한 소식 " + n("소소한 소식") + "건" + (kakao ? "\n카톡 로그인이 필요해 카톡은 건너뛰었어요" : "");
+  const fails = ((d && d.failed) || []).map(f => f.msg || "").join(" "), kakao = /로그인|채팅 목록|켜져 있지 않|켜지 못|안내창/.test(fails);
+  const body = err ? "정리하지 못했어요: " + err : "할 일 " + n("확인 필요") + "건 · 소소한 소식 " + n("소소한 소식") + "건" + (kakao ? "\n카톡을 읽지 못해 건너뛰었어요" : "");
   const t = new Notification({ title: "RamBriefing 아침 정리", body, icon: iconPath(iconNo()) });
   t.on("click", () => { if (win) { if (win.isMinimized()) win.restore(); win.focus(); } else createWindow(); });
   t.show();
+}
+// 원본 보관: 정리할 때 쓴 자료를 앱 전용 폴더에 30일 둔다. 동기화하지 않고 이 PC에만 남는다.
+const archiveRoot = () => path.join(app.getPath("userData"), "archive");
+const ARCHIVE_DAYS = 30, ARCHIVE_FILES = ["학교메신저.txt", "휴대폰메시지.txt", "카카오톡_최근대화.txt"];
+function archiveSave() {
+  const d = new Date(), name = d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()) + "_" + pad2(d.getHours()) + pad2(d.getMinutes()), dir = path.join(archiveRoot(), name);
+  fs.mkdirSync(dir, { recursive: true });
+  for (const f of ARCHIVE_FILES) { const p = path.join(workDir(), f); if (fs.existsSync(p)) fs.copyFileSync(p, path.join(dir, f)); }
+  const cut = new Date(Date.now() - ARCHIVE_DAYS * 864e5).toISOString().slice(0, 10);
+  for (const x of fs.readdirSync(archiveRoot())) if (/^\d{4}-\d{2}-\d{2}_/.test(x) && x.slice(0, 10) < cut) fs.rmSync(path.join(archiveRoot(), x), { recursive: true, force: true });
+}
+// 원본 찾기: AI가 알려 준 문구를 보관 파일에서 실제로 찾아 그 메시지를 돌려준다. 못 찾으면 아무것도 지어내지 않는다.
+function originalOf(key) {
+  const squeeze = s => String(s).replace(/\s+/g, "");
+  const k = squeeze(key); if (k.length < 4 || k.length > 200) return { found: false };
+  let dirs = []; try { dirs = fs.readdirSync(archiveRoot()).filter(x => /^\d{4}-\d{2}-\d{2}_/.test(x)).sort().reverse(); } catch { return { found: false }; }
+  for (const dir of dirs) for (const f of ARCHIVE_FILES) {
+    const lines = readText(path.join(archiveRoot(), dir, f)).split(/\r?\n/);
+    const i = lines.findIndex((l, n) => n > 1 && squeeze(l).includes(k)); if (i < 0) continue;
+    const up = re => { for (let n = i; n >= 0; n--) if (re.test(lines[n])) return n; return -1; };
+    let title = "", text = "";
+    if (f === "학교메신저.txt") {
+      const head = /^\[(브리티|GOE) /, s = Math.max(up(head), 0); let e = s + 1; while (e < lines.length && !head.test(lines[e])) e++;
+      title = lines[s].replace(/^\[([^\]]+)\]\s*/, "$1 · "); text = lines.slice(s + 1, e).join("\n");
+    } else if (f === "휴대폰메시지.txt") {
+      const s = up(/^=== .+ ===$/); title = "문자 · " + (s >= 0 ? lines[s].replace(/^=== | ===$/g, "") : ""); text = lines[i].replace(/\.\s*(\d{1,2}) (\d{1,2}), (\d{4}) (\d{1,2}:\d{2} (오전|오후))\..*$/, "\n($1/$2 $5 $4)");
+    } else {
+      const msg = /^\[.+\] \[(오전|오후) \d{1,2}:\d{2}\]/, stop = l => msg.test(l) || /^(=== .+ ===|-{5,} )/.test(l);
+      const s = Math.max(up(msg), 0), room = up(/^=== .+ ===$/), day = up(/^-{5,} /); let e = s + 1; while (e < lines.length && !stop(lines[e])) e++;
+      title = "카톡 · " + (room >= 0 ? lines[room].replace(/^=== | ===$/g, "") : "") + (day >= 0 ? " · " + lines[day].replace(/-{5,}/g, "").trim() : ""); text = lines.slice(s, e).join("\n");
+    }
+    return { found: true, title: title.trim(), text: text.trim().slice(0, 6000) };
+  }
+  return { found: false };
 }
 let morningBusy = false;
 async function runMorning() {
@@ -230,6 +273,7 @@ async function runMorning() {
   let err = "";
   try {
     fs.mkdirSync(workDir(), { recursive: true });
+    try { archiveSave(); } catch (e) { log("archive " + e.message); }
     const cfg = readCfg();
     try {
       if (cfg.engine === "gemini") await geminiBrief(cfg); else await runPs("일정정리_실행.ps1", [], 40 * 60000);
@@ -240,17 +284,33 @@ async function runMorning() {
     notifyBrief(d, err);
   } catch (e) { log("morning " + e.message); notifyBrief(null, e.message); }
   finally {
-    morningBusy = false;
+    morningBusy = false; runStep = "";
     if (win) win.webContents.reload();
     else if (process.argv.includes("--morning")) setTimeout(() => { if (!win) app.quit(); }, 30000);
   }
 }
-let retrying = false;
+let retrying = false, runStep = "";
+const runState = () => ({ running: retrying || morningBusy, step: morningBusy ? "정리하는 중" : runStep });
 function retry() {
   if (!hasAuto()) throw new Error("아침 정리 파일을 찾지 못했습니다");
   if (retrying || morningBusy) return "running";
-  retrying = true;
+  retrying = true; runStep = "카톡 다시 읽는 중";
   runPs("카톡_아침내보내기.ps1", ["-Retry"], 40 * 60000, true).catch(e => log("retry " + e.message)).finally(() => { retrying = false; runMorning(); });
+  return "started";
+}
+// 지금 정리: 예약 시각을 기다리지 않고 고른 자료를 읽어 바로 정리한다
+function runNow() {
+  if (!hasAuto()) throw new Error("아침 정리 파일을 찾지 못했습니다");
+  if (retrying || morningBusy) return "running";
+  const su = getSetup();
+  if (!su.done || su.role !== "this") throw new Error("이 컴퓨터를 보고받을 컴퓨터로 먼저 정해 주세요");
+  const src = su.sources || [];
+  retrying = true;
+  (async () => {
+    if (src.includes("kakao")) { runStep = "카톡 읽는 중"; await runPs("카톡_아침내보내기.ps1", [], 40 * 60000, true).catch(e => log("now kakao " + e.message)); }
+    if (src.includes("sms")) { runStep = "문자 읽는 중"; await runPs("문자_읽기.ps1", [], 30 * 60000, true).catch(e => log("now sms " + e.message)); }
+    if (src.includes("school")) { runStep = "학교 메신저 읽는 중"; await runPs("학교메신저_읽기.ps1", [], 30 * 60000, true).catch(e => log("now school " + e.message)); }
+  })().finally(() => { retrying = false; runMorning(); });
   return "started";
 }
 
@@ -318,6 +378,9 @@ ipcMain.handle("getSetup", guard(getSetup));
 ipcMain.handle("saveSetup", guard(saveSetup));
 ipcMain.handle("checkEnv", guard(checkEnv));
 ipcMain.handle("retry", guard(retry));
+ipcMain.handle("runNow", guard(runNow));
+ipcMain.handle("runState", guard(runState));
+ipcMain.handle("getOriginal", guard(originalOf));
 ipcMain.handle("setGemini", guard(setGemini));
 ipcMain.handle("getBriefings", guard(briefings));
 ipcMain.handle("syncDoc", guard(async p => { if (!loadRefresh()) return { off: true }; return syncDoc(p || {}); }));
@@ -334,6 +397,7 @@ function createWindow() {
     webPreferences: { preload: path.join(__dirname, "preload.js"), contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
   win.on("closed", () => { win = null; });
+  applyIcon(iconNo());
   win.webContents.setWindowOpenHandler(({ url }) => { if (/^https:\/\//.test(url)) shell.openExternal(url); return { action: "deny" }; });
   win.webContents.on("will-navigate", e => e.preventDefault());
   win.loadFile(path.join(__dirname, "index.html"));

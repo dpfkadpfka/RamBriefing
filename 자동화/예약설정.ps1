@@ -2,7 +2,7 @@
 param([string]$Time = "06:00", [string]$Sources = "kakao,sms", [string]$Engine = "gemini", [string]$AppExe = "", [string]$AppArgs = "--morning", [switch]$Off, [string]$Prefix = "RamBriefing")
 $ErrorActionPreference = "Stop"
 $here = $PSScriptRoot; . (Join-Path $here "공통.ps1")
-$names = "1 Kakao", "2 Messages", "3 Morning"
+$names = "1 Kakao", "2 Messages", "2 School", "3 Morning"
 if ($Off) {
   foreach ($n in $names + "3 Schedule", "4 Screen") { $x = Get-ScheduledTask -TaskName "$Prefix $n" -ErrorAction SilentlyContinue; if ($x) { Disable-ScheduledTask -InputObject $x | Out-Null } }
   "off"; exit
@@ -16,8 +16,9 @@ $set = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatteries
 $psAct = { param($f) New-ScheduledTaskAction -Execute $ps -Argument ("-NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File ""{0}""" -f (Join-Path $here $f)) }
 $list = @(
   @{ n = "1 Kakao";    a = (& $psAct "카톡_아침내보내기.ps1"); m = -50; need = "kakao" },
-  @{ n = "2 Messages"; a = (& $psAct "문자_읽기.ps1");         m = -10; need = "sms" },
-  @{ n = "3 Morning";  a = (New-ScheduledTaskAction -Execute $AppExe -Argument $AppArgs); m = 0; need = "" })
+  @{ n = "2 Messages"; a = (& $psAct "문자_읽기.ps1");         m = -30; need = "sms" },
+  @{ n = "2 School";   a = (& $psAct "학교메신저_읽기.ps1");  m = -20; need = "school" },
+  @{ n = "3 Morning"; a = (New-ScheduledTaskAction -Execute $AppExe -Argument $AppArgs); m = 0; need = "" })
 foreach ($t in $list) {
   $name = "$Prefix $($t.n)"
   Register-ScheduledTask -TaskName $name -Action $t.a -Trigger (New-ScheduledTaskTrigger -Daily -At ($base.AddMinutes($t.m))) -Settings $set -Force | Out-Null

@@ -78,16 +78,20 @@ $TS = [System.Windows.Automation.TreeScope]
 $result = @{ saved = @(); errors = @() }
 $script:dbg = @()
 function Save { $result.debug = $script:dbg; $result | ConvertTo-Json -Depth 4 | Out-File $ResultFile -Encoding utf8 }
-function Done { Save; exit }
+function Done {
+  Save
+  if ($script:hideAfter) { $m = MainWin; if ($m) { [W32]::PostMessage([IntPtr][long]$m[0], 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null } }   # 처음에 안 보였으면 다시 숨긴다
+  exit
+}
 function Stopped { return ($StopFile -and (Test-Path $StopFile)) }
 
 
-$kakao = Get-Process KakaoTalk -ErrorAction SilentlyContinue
-if (-not $kakao) {   # 꺼져 있으면 직접 켠다 (작업 표시줄에 없어도 됨)
-  $exe = "${env:ProgramFiles(x86)}\Kakao\KakaoTalk\KakaoTalk.exe"
-  if (Test-Path -LiteralPath $exe) { Start-Process -FilePath $exe; for ($i = 0; $i -lt 40 -and -not $kakao; $i++) { Start-Sleep -Milliseconds 500; $kakao = Get-Process KakaoTalk -ErrorAction SilentlyContinue }; Start-Sleep -Seconds 12 }
+. (Join-Path $PSScriptRoot "공통.ps1")
+$kakao = Get-Process KakaoTalk -ErrorAction SilentlyContinue; $startedByUs = $false
+if (-not $kakao) {   # 꺼져 있으면 윈도우 앱 목록에서 찾아 켠다 (작업 표시줄에 없어도 됨)
+  if (Start-Kakao) { $startedByUs = $true; for ($i = 0; $i -lt 40 -and -not $kakao; $i++) { Start-Sleep -Milliseconds 500; $kakao = Get-Process KakaoTalk -ErrorAction SilentlyContinue } }
 }
-if (-not $kakao) { $result.errors += @{ room = ""; msg = "카카오톡 PC가 켜져 있지 않아요" }; Done }
+if (-not $kakao) { $result.errors += @{ room = ""; msg = "카카오톡 PC를 켜지 못했어요" }; Done }
 $pids = @($kakao | ForEach-Object { $_.Id })
 function KWins { [W32]::List() | Where-Object { $pids -contains [int]$_[1] -and $_[4] -eq "1" } }
 function FindRoom($name) {
@@ -262,15 +266,66 @@ function Export-Room($hit, $name, $idx) {
   else { $result.errors += @{ room = $name; msg = "저장이 끝나지 않았어요" } }
 }
 
+# '대화내용을 불러오는 중' 창은 방이 아니다. 뜨는 동안에는 방이 열릴 때까지 더 기다린다
+function Loading { @(KWins | Where-Object { $_[2] -like "대화내용*" }).Count -gt 0 }
+function NewRoom($known, $secs) {
+  $t = Get-Date
+  while (((Get-Date) - $t).TotalSeconds -lt $secs) {
+    Start-Sleep -Milliseconds 250
+    $n = KWins | Where-Object { $known -notcontains $_[0] -and $_[3] -like "EVA_Window*" -and $_[2] -and $_[2] -ne "카카오톡" -and $_[2] -ne "통합검색" -and $_[2] -notlike "KakaoTalk*" -and $_[2] -notlike "대화내용*" } | Select-Object -First 1
+    if ($n) { return ,$n }
+    if (Loading) { $secs = 90 }
+  }
+  return $null
+}
+function CloseNew($known) { foreach ($x in @(KWins | Where-Object { $known -notcontains $_[0] -and $_[3] -like "EVA_Window*" -and $_[2] -and $_[2] -ne "카카오톡" })) { [W32]::PostMessage([IntPtr][long]$x[0], 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null; Start-Sleep -Milliseconds 150 } }   # 이 방 때문에 열린 창을 남기지 않는다
 $cut = (Get-Date).Date.AddDays(-$Days)
 $Only = @($Only | ForEach-Object { $_ -split "," } | Where-Object { $_ })
+for ($i = 0; $i -lt 30 -and -not (MainWin); $i++) { Start-Sleep -Seconds 1 }   # 방금 켰으면 목록 창이 생길 때까지 기다린다
+$wantHide = $startedByUs -or -not @(KWins | Where-Object { $_[2] -eq "카카오톡" -and $_[3] -like "EVA_Window*" }).Count
+function LoginPopup { @(KWins | Where-Object { $_[3] -eq "EVA_Window_Dblclk" -and -not $_[2] }).Count -gt 0 }   # 로그인 중에 뜨는 제목 없는 안내창 ('다른 기기에서 로그인 중' 등)
 # 시작 전에 열려 있는 방·검색 창 닫기 (목록 창은 그대로)
 foreach ($w in @(KWins | Where-Object { $_[3] -like "EVA_Window*" -and $_[2] -and $_[2] -ne "카카오톡" -and $_[2] -notlike "KakaoTalk*" })) { [W32]::PostMessage([IntPtr][long]$w[0], 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null; Start-Sleep -Milliseconds 150 }
-$h = MainFocus; if (-not $h) { $result.errors += @{ room = ""; msg = "카카오톡 목록 창을 앞으로 가져오지 못했어요" }; Done }
-[System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 400   # 남아 있는 검색칸 닫기
-$h = MainFocus; if (-not $h) { $result.errors += @{ room = ""; msg = "카카오톡 목록 창을 앞으로 가져오지 못했어요" }; Done }
-ClickIn $h 38 118 | Out-Null; Start-Sleep -Milliseconds 400
-$lh = [WH]::List($h); if ($lh -eq [IntPtr]::Zero) { $result.errors += @{ room = ""; msg = "카톡 로그인이 필요해요 (채팅 목록을 찾지 못했어요)" }; Done }
+# '다른 기기에서 로그인 중' 안내창인지 글자로 확인한 뒤 [확인]을 눌러 이 컴퓨터로 가져온다 (글자가 다르면 누르지 않는다)
+function PopupText($pw) {
+  $r = New-Object W32+RECT; [W32]::GetWindowRect([IntPtr][long]$pw[0], [ref]$r) | Out-Null
+  $w = $r.R - $r.L; $hh = $r.B - $r.T; if ($w -lt 40 -or $hh -lt 40) { return "" }
+  $bmp = New-Object System.Drawing.Bitmap ($w * 3), ($hh * 3); $s1 = New-Object System.Drawing.Bitmap $w, $hh
+  $g = [System.Drawing.Graphics]::FromImage($s1); $g.CopyFromScreen($r.L, $r.T, 0, 0, $s1.Size); $g.Dispose()
+  $g = [System.Drawing.Graphics]::FromImage($bmp); $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic; $g.DrawImage($s1, 0, 0, $bmp.Width, $bmp.Height); $g.Dispose(); $s1.Dispose()
+  $ms = New-Object System.IO.MemoryStream; $bmp.Save($ms, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+  $st = [Windows.Storage.Streams.InMemoryRandomAccessStream]::new(); $dw = [Windows.Storage.Streams.DataWriter]::new($st)
+  $dw.WriteBytes($ms.ToArray()); Await ($dw.StoreAsync()) ([uint32]) | Out-Null; $st.Seek(0); $ms.Dispose()
+  $dec = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($st)) ([Windows.Graphics.Imaging.BitmapDecoder])
+  $sb = Await ($dec.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+  return ((Await ($ocr.RecognizeAsync($sb)) ([Windows.Media.Ocr.OcrResult])).Text -replace '\s', '')
+}
+$lh = [IntPtr]::Zero; $h = $null; $esc = $false; $popup = $false; $taken = $false
+for ($try = 0; $try -lt 25 -and $lh -eq [IntPtr]::Zero; $try++) {   # 자동 로그인이 끝날 때까지 기다린다
+  if (-not $taken) {
+    $pw = @(KWins | Where-Object { $_[3] -eq "EVA_Window_Dblclk" -and -not $_[2] }) | Select-Object -First 1
+    if ($pw) {
+      Focus ([IntPtr][long]$pw[0]); Start-Sleep -Milliseconds 300
+      $txt = PopupText $pw; $script:dbg += "안내창 글자 길이: " + $txt.Length
+      if ($txt -match '다른기기|강제로그아웃') { ClickFrac ([IntPtr][long]$pw[0]) 0.25 0.88; $taken = $true; $script:dbg += "다른 기기 안내창 확인 누름"; Start-Sleep -Seconds 3; continue }
+    }
+  }
+  $h2 = MainFocus
+  if ($h2) {
+    $h = $h2
+    if (-not $esc -and -not (LoginPopup)) { $esc = $true; [System.Windows.Forms.SendKeys]::SendWait("{ESC}"); Start-Sleep -Milliseconds 400; $h2 = MainFocus; if ($h2) { $h = $h2 } }   # 남아 있는 검색칸 닫기
+    ClickIn $h 38 118 | Out-Null; Start-Sleep -Milliseconds 400; $lh = [WH]::List($h)
+  }
+  if ($lh -eq [IntPtr]::Zero) {
+    $popup = LoginPopup; if ($popup -and $try -ge 2) { break }   # 안내창은 저절로 닫히지 않으므로 더 기다리지 않는다. 누르지도 않는다
+    Start-Sleep -Seconds 3
+  }
+}
+if ($lh -eq [IntPtr]::Zero) {
+  $why = if ($popup) { "카톡 안내창이 떠 있어 넘어가지 못했어요. 카톡 창을 확인해 주세요" } elseif ($h) { "카톡 로그인이 필요해요 (채팅 목록을 찾지 못했어요)" } else { "카카오톡 목록 창을 앞으로 가져오지 못했어요" }
+  $result.errors += @{ room = ""; msg = $why }; Done
+}
+$script:hideAfter = $wantHide
 $q = New-Object W32+RECT; [W32]::GetWindowRect($lh, [ref]$q) | Out-Null
 $cx = [int](($q.L + $q.R) / 2); $cy = [int](($q.T + $q.B) / 2)
 $seen = @{}; $idx = 0; $t00 = Get-Date
@@ -285,7 +340,9 @@ $old = 0; $prev = ""; $stop = $false; $script:dbg += "탭: " + $tab[0]
 for ($page = 0; $page -lt 80 -and -not $stop; $page++) {
   if (-not (MainFocus)) { break }
   Start-Sleep -Milliseconds 300
-  $marks = @(Read-Dates $q); $script:dbg += "page $page marks $($marks.Count) list $($q.L),$($q.T),$($q.R),$($q.B) main " + (MainWin -join "/")
+  $marks = @(Read-Dates $q)
+  for ($k = 0; $k -lt 5 -and -not $marks.Count; $k++) { Start-Sleep -Seconds 1; MainFocus | Out-Null; Start-Sleep -Milliseconds 300; $marks = @(Read-Dates $q); $script:dbg += "날짜 다시 읽기 $k : $($marks.Count)" }   # 화면이 늦게 그려져도 탭을 건너뛰지 않는다
+  $script:dbg += "page $page marks $($marks.Count) list $($q.L),$($q.T),$($q.R),$($q.B) main " + (MainWin -join "/")
   $sig = ($marks | ForEach-Object { "$($_.Y)$($_.Date)" }) -join "|"; if ($sig -eq $prev) { break }; $prev = $sig
   foreach ($m in $marks) {
     if (Stopped -or ((Get-Date) - $t00).TotalMinutes -gt 90) { $stop = $true; break }
@@ -297,11 +354,10 @@ for ($page = 0; $page -lt 80 -and -not $stop; $page++) {
       if (-not (MainFocus)) { continue }
       $known = @(KWins | ForEach-Object { $_[0] })
       [W32]::DClick($cx, $y)
-      $w = $null
-      for ($i = 0; $i -lt 24 -and -not $w; $i++) { Start-Sleep -Milliseconds 250
-        $w = KWins | Where-Object { $known -notcontains $_[0] -and $_[3] -like "EVA_Window*" -and $_[2] -and $_[2] -ne "카카오톡" -and $_[2] -ne "통합검색" -and $_[2] -notlike "KakaoTalk*" } | Select-Object -First 1 }
-      if (-not $w) { if (MainFocus) { Start-Sleep -Milliseconds 300; [W32]::DClick($cx, $y); for ($i = 0; $i -lt 16 -and -not $w; $i++) { Start-Sleep -Milliseconds 250; $w = KWins | Where-Object { $known -notcontains $_[0] -and $_[3] -like "EVA_Window*" -and $_[2] -and $_[2] -ne "카카오톡" -and $_[2] -ne "통합검색" -and $_[2] -notlike "KakaoTalk*" } | Select-Object -First 1 } } }
-      if (-not $w) { $result.errors += @{ room = "목록 위치 $y"; msg = "방이 열리지 않았어요" }; $script:dbg += "no room at y=$y fg=" + [W32]::GetForegroundWindow() + " wins=" + ((KWins | ForEach-Object { $_[3] + ":" + $_[2].Length }) -join ","); continue }
+      $w = NewRoom $known 6
+      if (-not $w) { if (MainFocus) { Start-Sleep -Milliseconds 300; [W32]::DClick($cx, $y); $w = NewRoom $known 4 } }
+      if (-not $w) { $result.errors += @{ room = "목록 위치 $y"; msg = "방이 열리지 않았어요" }; $script:dbg += "no room at y=$y fg=" + [W32]::GetForegroundWindow() + " wins=" + ((KWins | ForEach-Object { $_[3] + ":" + $_[2].Length }) -join ","); CloseNew $known; continue }
+      $t1 = Get-Date; while ((Loading) -and ((Get-Date) - $t1).TotalSeconds -lt 90) { Start-Sleep -Milliseconds 500 }   # 큰 방은 대화를 다 불러온 뒤 저장한다
       $key = $w[2] + "|" + $m.Date.ToString("yyyyMMdd")
       if ($seen.ContainsKey($key)) { [W32]::PostMessage([IntPtr][long]$w[0], 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null; Start-Sleep -Milliseconds 300; continue }
       $seen[$key] = 1
@@ -316,6 +372,7 @@ for ($page = 0; $page -lt 80 -and -not $stop; $page++) {
       }
       [W32]::PostMessage([IntPtr][long]$w[0], 0x0010, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
       Start-Sleep -Milliseconds 400
+      CloseNew $known
       Save
     } catch { $result.errors += @{ room = "$idx"; msg = $_.Exception.Message } }
   }
